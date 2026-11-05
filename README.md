@@ -79,3 +79,5 @@ python3 -m quantdoctor job-result-validate examples/worker-job.json examples/wor
 ```
 
 示例是接口 fixture。校验只检查阶段字段、产物角色和 SHA-256 形状，以及回传是否匹配该 job。设备适配器和实际执行证据按 [产品架构](docs/ARCHITECTURE.md) 分阶段接入。
+
+有真实输入或回传文件时，可以生成摘要并校验实际产物。见 [离线产物校验](docs/ARTIFACTS.md)。

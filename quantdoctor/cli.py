@@ -7,6 +7,7 @@ import subprocess
 import sys
 from tempfile import TemporaryDirectory
 
+from .artifacts import artifact_digest, verify_artifacts
 from .checkpoint import audit_checkpoints, inspect_checkpoint
 from .contracts import WorkerJob, WorkerResult
 from .datasets import load_asr_dataset, prepare_evaluation
@@ -93,9 +94,15 @@ def main(argv=None):
     commands.add_parser("qat-template").add_argument("-o", "--output", type=Path)
     commands.add_parser("qat-validate").add_argument("recipe", type=Path)
     commands.add_parser("job-validate", help="Validate an offline worker job and print its digest").add_argument("job", type=Path)
+    commands.add_parser("artifact-digest", help="Print the digest of a local artifact file or directory").add_argument(
+        "artifact", type=Path)
+    inputs = commands.add_parser("job-input-verify", help="Verify a worker job's local input artifacts")
+    inputs.add_argument("job", type=Path)
+    inputs.add_argument("artifact_root", type=Path)
     result = commands.add_parser("job-result-validate", help="Validate a worker result against its job")
     result.add_argument("job", type=Path)
     result.add_argument("result", type=Path)
+    result.add_argument("--artifact-root", type=Path, help="Verify the successful result's output artifacts")
     worker = commands.add_parser("qat-run", help="Run selective QAT on a Linux/CUDA worker")
     worker.add_argument("recipe", type=Path)
     for flag in ("snapshot", "edge-repo", "output"):
@@ -159,13 +166,23 @@ def main(argv=None):
         elif args.command == "qat-validate":
             QATRecipe.parse(load_json(args.recipe))
             print("QAT recipe schema validated. Model, datasets and device are checked by the worker.")
-        elif args.command in {"job-validate", "job-result-validate"}:
+        elif args.command == "artifact-digest":
+            print(artifact_digest(args.artifact))
+        elif args.command in {"job-validate", "job-input-verify", "job-result-validate"}:
             job = WorkerJob.parse(load_json(args.job))
             if args.command == "job-validate":
                 print(job.id)
+            elif args.command == "job-input-verify":
+                emit({"job_id": job.id, "verified_inputs": verify_artifacts(args.artifact_root, job.inputs)})
             else:
                 result = WorkerResult.parse(load_json(args.result), job)
-                print(f"Result schema validated: {result.source}/{result.status}. Artifacts and execution are unverified.")
+                if args.artifact_root:
+                    require(result.status == "succeeded", "only successful worker results have output artifacts")
+                    emit({"job_id": job.id, "source": result.source,
+                          "verified_outputs": verify_artifacts(args.artifact_root, result.outputs),
+                          "execution_verified": False})
+                else:
+                    print(f"Result schema validated: {result.source}/{result.status}. Artifacts and execution are unverified.")
         elif args.command == "qat-run":
             from .qat_worker import run
             run(*(path.resolve() for path in (args.recipe, args.snapshot, args.edge_repo, args.output)))

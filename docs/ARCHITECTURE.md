@@ -13,7 +13,7 @@
 | ASR Evaluator 与分诊 | 计算配对 CER/WER、空转写，区分 EOS、清理异常、失败和缺证据。 | 已实现基础规则和逐步 EOS 分差对齐。板端采集、音频边界证据和置信区间待做。 |
 | Planner 与 Web | 展示证据、提出单变量改变、导出工单。规划逐组干预后再细化到层。 | 已实现本地样本视图、工单、三组复验对照和 [EOS 分差图](DECODE_EVIDENCE.md)。设备实测和多候选排序待做。 |
 | Model Inspector | 从 HF config 与 safetensors 头部解析张量 shape、dtype、ties 和组件体积，按需核对实际张量内容。 | 已实现 [本地检查和变更审计](CHECKPOINT.md)。校准、导出和 engine 之间的 FQN 映射待做。 |
-| Artifact Store 与协调器 | 读取工单、解析内容摘要、物化输入、保存阶段结果。首次设备接入通过文件往返。 | 已定义离线阶段合同和 CLI 校验。产物校验、任务串联、重试与缓存待做。 |
+| Artifact Store 与协调器 | 读取工单、解析内容摘要、物化输入、保存阶段结果。首次设备接入通过文件往返。 | 已实现离线阶段合同和 [输入及结果产物校验](ARTIFACTS.md)。自动串联、重试与缓存待做。 |
 | Backend Adapter | 版本绑定的 PTQ、QAT、模型探针、ONNX 导出、Engine Build、运行与采样。 | 选择性 QAT 有独立试验性 Worker。其余保留阶段接口。实际执行均需单独验证。 |
 | Target Profile | 将模型、精度和执行环境的支持证据绑定到具体阶段。 | 支持状态接口已保留。能力清单、板端探测和实测登记待做。 |
 
