@@ -57,6 +57,14 @@ def _sample_edit_delta(original: Sample, repaired: Sample, transition):
     return {"original": before, "repaired": after, "reference_units": len(reference)}
 
 
+def _edit_effect(edits):
+    if edits is None:
+        return "unscored"
+    if edits["repaired"] < edits["original"]:
+        return "fewer_edits"
+    return "more_edits" if edits["repaired"] > edits["original"] else "same_edits"
+
+
 def _cohort_metrics(before, after, shared):
     original = evaluate(replace(before, samples=[row for row in before.samples if row.id in shared]))
     repaired = evaluate(replace(after, samples=[row for row in after.samples if row.id in shared]))
@@ -123,6 +131,7 @@ def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=N
     shared = set()
     counts = {code: 0 for code in ("recovered_text", "new_empty", "still_empty", "stable_text",
                                   "repair_missing", "repair_failed", "original_unavailable", "input_mismatch")}
+    edit_counts = dict.fromkeys(("fewer_edits", "more_edits", "same_edits", "unscored"), 0)
     for original in before.samples:
         repaired = repaired_rows[original.id]
         require((original.reference, original.language, original.speaker_id, original.baseline, original.audio_sha256) ==
@@ -134,12 +143,15 @@ def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=N
                       else "input_mismatch")
         counts[transition] += 1
         edits = _sample_edit_delta(original, repaired, transition)
+        edit_effect = _edit_effect(edits)
+        edit_counts[edit_effect] += 1
         if edits is not None and classify(original.baseline) not in {"failed", "missing"}:
             shared.add(original.id)
         samples[original.id] = {
             "transition": transition,
             "output": asdict(repaired.candidate) if repaired.candidate is not None else None,
             "edits": edits,
+            "edit_effect": edit_effect,
             **sample_evidence(original.baseline, repaired.candidate, expected=original.audio_sha256),
         }
 
@@ -153,6 +165,7 @@ def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=N
         "repair_run": asdict(after.candidate),
         "change": changed,
         "counts": counts,
+        "edit_counts": edit_counts,
         "metrics": _cohort_metrics(before, after, shared),
         "samples": samples,
         "costs": _compare_costs(costs, before, after),

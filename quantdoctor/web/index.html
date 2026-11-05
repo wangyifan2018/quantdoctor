@@ -38,6 +38,7 @@
         <p class="muted">本地导入核对工单与文件摘要。设备执行和实际精度仍需独立验证。</p>
         <div id="worker-receipts"></div>
       </section>
+      <div id="candidate-replay"></div>
       <section class="replay-overview">
         <h2>逐样本诊断</h2>
         <div class="sample-controls">
@@ -53,6 +54,7 @@
           <p id="candidate-reference"></p>
           <p id="candidate-cohort" class="muted"></p>
           <div id="candidate-sample-results"></div>
+          <p id="candidate-replay-transition" class="transition" hidden></p>
           <section id="candidate-finding" class="finding"></section>
           <details id="candidate-evidence">
             <summary>查看音频边界与 EOS 分差</summary>
@@ -83,7 +85,11 @@
           <span class="muted">依据导入的运行记录 · 部署待验收</span>
         </div>
         <p id="replay-change"></p>
+        <h3>转写状态变化</h3>
         <div id="replay-counts" class="replay-counts" aria-label="样本结果变化"></div>
+        <h3>原方案与修复后的编辑数</h3>
+        <div id="replay-edit-chart" aria-hidden="true"></div>
+        <div id="replay-edit-counts" class="replay-counts" aria-label="按编辑数筛选复验样本"></div>
         <div id="replay-metrics" class="muted"></div>
         <div id="replay-costs" class="muted"></div>
         <details id="replay-artifacts">
@@ -99,7 +105,6 @@
           <select id="sample-filter">
             <option value="all">全部样本</option>
             <option value="issues">仅异常</option>
-            <option value="replay" id="replay-filter" hidden>复验有变化或缺结果</option>
           </select>
           <div id="samples" aria-label="样本列表"></div>
         </aside>

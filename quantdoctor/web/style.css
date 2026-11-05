@@ -35,7 +35,9 @@ button, select { font: inherit; color: inherit; background: var(--surface); bord
 .replay-overview { padding: 14px; margin: 0 0 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 .replay-heading { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
 .replay-counts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }
-.replay-counts span { padding: 3px 7px; background: var(--active); border-radius: 5px; font-variant-numeric: tabular-nums; }
+.replay-counts button { padding: 3px 7px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.replay-counts button:disabled { color: var(--muted); cursor: default; }
+.replay-counts .replay-effect { border-inline-start: 3px solid var(--outcome); }
 .transition { margin-top: 10px; color: var(--accent); }
 #step-control { font-size: 13px; }
 .decode-row { display: grid; grid-template-columns: minmax(64px, 1fr) minmax(72px, 2fr) minmax(52px, auto); gap: 6px; align-items: center; margin: 5px 0; }
@@ -68,6 +70,7 @@ button, select { font: inherit; color: inherit; background: var(--surface); bord
 .outcome-empty { --outcome: light-dark(#ad5a0b, #ffc269); }
 .outcome-failed { --outcome: light-dark(#a93947, #ff8f9d); }
 .outcome-missing { --outcome: var(--muted); }
+.outcome-same { --outcome: light-dark(#548294, #8fc2d3); }
 .outcome-link { color: var(--accent); cursor: pointer; }
 .sample-controls { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 10px 0; }
 .sample-controls label { display: grid; gap: 4px; min-width: 0; }

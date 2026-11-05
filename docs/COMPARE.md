@@ -16,6 +16,17 @@ python3 -m quantdoctor compare quality-demo/original.json quality-demo/repaired.
 
 以演示中的 `nvfp4-demo` 和 `ASR-014` 为例，可以看到候选首步选中了 EOS，以及最早观察到的差异落在 Encoder 输出。建议复验卡会列出「仅恢复 Audio 到 FP16」、应固定的输入与解码条件、复跑时要检查的指标。实际归因需结合 [单变量修复复验](REPLAY.md)。
 
+## 在同一页面查看修复复验
+
+```sh
+python3 -m quantdoctor compare quality-demo/original.json quality-demo/repaired.json quality-demo/fp8.json \
+  --replay nvfp4-demo nvfp4-fp16-audio-demo ASR-014 --costs quality-demo/costs.json --port 8765
+```
+
+`--replay` 依次指定两个候选的 run ID 和触发工单的样本。原方案与修复方案的声明必须满足单变量复验条件。两个 checkpoint 都已关联到对应运行时，可额外传 `--original-checkpoint` 和 `--repaired-checkpoint` 审计实际权重范围。
+
+「单变量修复复验」将转写状态与编辑数变化分开，点击任意非零计数即可筛选录音。详情同时显示基线、原方案和修复后三份转写，以及已采集的 EOS 分差和音频边界。复验 CER/WER 使用这三组的共同集合，可能与全候选的共同集合不同。每条录音的复验编辑数只需要原方案和修复后的可比输出及参考转写。
+
 ## 可比条件与评分
 
 - 每次可比较 2–12 个候选。候选须使用同一个模型和浮点基线，评测集与请求摘要一致。候选的运行来源、环境、模型 revision 与请求配置须和基线匹配。样本、语言、参考文本和浮点基线输出相同，结果文件的样本顺序可以不同。

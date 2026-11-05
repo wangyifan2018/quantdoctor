@@ -47,6 +47,7 @@ class AudioEvidenceTests(unittest.TestCase):
         self.repaired["samples"][0]["candidate"]["audio"]["input_sha256"] = "1" * 64
         result = verify_repair(Comparison.parse(self.original), Comparison.parse(self.repaired), "ASR-014")
         self.assertEqual(result["samples"]["ASR-014"]["transition"], "input_mismatch")
+        self.assertEqual(result["samples"]["ASR-014"]["edit_effect"], "unscored")
         self.assertEqual(result["counts"]["input_mismatch"], 1)
 
     def test_both_runs_can_conflict_with_expected_audio(self):

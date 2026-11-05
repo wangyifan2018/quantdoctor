@@ -12,6 +12,10 @@ const transitions = {
   original_unavailable: "原始结果不可用",
   input_mismatch: "实际输入音频不一致",
 };
+const editEffects = {
+  fewer_edits: ["编辑数减少", "outcome-text"], more_edits: ["编辑数增加", "outcome-failed"],
+  same_edits: ["编辑数相同", "outcome-same"], unscored: ["无法评分", "outcome-missing"],
+};
 const percentage = (value) => (value * 100).toFixed(1) + "%";
 const tensorType = row => row ? row.dtype + " [" + row.shape.join(", ") + "]" : "缺失";
 const alignmentLabels = {
@@ -79,16 +83,66 @@ function showReplayAudit(audit) {
   }
 }
 
-function showReplay(replay, original) {
+function addReplayFilters(select, replay) {
+  const states = document.createElement("optgroup");
+  states.label = "复验转写状态";
+  states.append(new Option("复验有变化或异常", "replay"));
+  for (const [code, count] of Object.entries(replay.counts)) {
+    if (count) states.append(new Option(transitions[code] + " · " + count, "transition:" + code));
+  }
+  const effects = document.createElement("optgroup");
+  effects.label = "复验编辑数";
+  for (const [code, count] of Object.entries(replay.edit_counts)) {
+    if (count) effects.append(new Option(editEffects[code][0] + " · " + count, "effect:" + code));
+  }
+  select.append(states, effects);
+  return [states, effects];
+}
+
+function matchesReplayFilter(row, selection) {
+  if (!row) return false;
+  if (selection === "replay") return row.transition !== "stable_text"
+    || row.edit_effect === "fewer_edits" || row.edit_effect === "more_edits";
+  const [kind, code] = selection.split(":");
+  return kind === "transition" ? row.transition === code : row.edit_effect === code;
+}
+
+function describeReplayRow(row) {
+  const edits = row.edits;
+  return transitions[row.transition] + (edits ? " · " + editEffects[row.edit_effect][0] + " "
+    + edits.original + " → " + edits.repaired + "（" + edits.reference_units + " 个参考单位）" : " · 无可比编辑数");
+}
+
+function showReplay(replay, selectSamples) {
+  const original = replay.work_order.candidate;
   const [field, value] = Object.entries(replay.change)[0];
   const component = field.split(".")[1];
-  text("replay-change", component + " " + original.precision[component] + " → " + value
-    + " · 工单样本 " + replay.work_order.sample_id);
+  text("replay-change", original.id + " → " + replay.repair_run.id + " · 工单变更 "
+    + component + " " + original.precision[component] + " → " + value + " · 工单样本 " + replay.work_order.sample_id);
+  function appendCount(container, label, count, filter, style) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label + " " + count;
+    if (style) button.className = "replay-effect " + style;
+    button.disabled = !count;
+    button.addEventListener("click", () => selectSamples(filter));
+    byId(container).append(button);
+  }
   for (const [code, count] of Object.entries(replay.counts)) {
     if (!count && !["recovered_text", "new_empty"].includes(code)) continue;
-    const badge = document.createElement("span");
-    badge.textContent = transitions[code] + " " + count;
-    byId("replay-counts").append(badge);
+    appendCount("replay-counts", transitions[code], count, "transition:" + code);
+  }
+  const chart = byId("replay-edit-chart");
+  chart.className = "outcome-chart";
+  for (const [code, count] of Object.entries(replay.edit_counts)) {
+    const [label, style] = editEffects[code];
+    if (count) {
+      const segment = document.createElement("span");
+      segment.className = style;
+      segment.style.flexGrow = count;
+      chart.append(segment);
+    }
+    appendCount("replay-edit-counts", label, count, "effect:" + code, style);
   }
   const metrics = Object.entries(replay.metrics).filter(([, values]) => values.paired);
   text("replay-metrics", metrics.length ? metrics.map(([name, values]) =>
@@ -105,9 +159,6 @@ function showReplay(replay, original) {
   }).join(" · ") : "未导入可配对的性能数据");
   showReplayAudit(replay.checkpoint_audit);
   byId("replay-overview").hidden = false;
-  byId("repaired-column").hidden = false;
-  byId("replay-filter").hidden = false;
-  byId("transcripts").classList.add("with-repair");
 }
 
 function showAudioEvidence(original, repaired, prefix = "") {
@@ -416,34 +467,49 @@ function showWorkerReceipts(data, create) {
 }
 
 function showCandidateDiagnosis(data, create) {
+  const replay = data.replay;
+  const originalId = replay?.work_order.candidate.id;
+  const repairId = replay?.repair_run.id;
+  const replayRows = new Map(Object.entries(replay?.samples ?? {}));
   const runPicker = byId("diagnosis-run");
   const filter = byId("diagnosis-filter");
   const picker = byId("candidate-sample");
   const rows = new Map(data.samples.map(sample => [sample.id, sample]));
   for (const run of data.candidates) runPicker.add(new Option(run.id));
+  const replayFilters = replay ? addReplayFilters(filter, replay) : [];
+  if (replay) runPicker.value = originalId;
 
   function renderSample() {
     const sample = rows.get(picker.value);
     byId("candidate-detail").hidden = !sample;
     if (!sample) return;
     const result = sample.candidates[runPicker.value];
+    const replayRow = runPicker.value === originalId ? replayRows.get(sample.id) : null;
     text("candidate-reference", "参考转写 " + (sample.reference ?? "未提供")
       + (sample.speaker_id ? " · 说话人 " + sample.speaker_id : ""));
     const scored = sample.common_scoring;
     const delta = scored ? result.edits - sample.baseline_edits : null;
-    text("candidate-cohort", scored ? sample.metric.toUpperCase() + " · " + sample.reference_units + " 个参考单位 · 编辑数 "
+    text("candidate-cohort", scored ? "全候选共同评分 · " + sample.metric.toUpperCase() + " · " + sample.reference_units
+      + " 个参考单位 · 基线到" + (replayRow ? "原方案" : "候选") + "的编辑数 "
       + sample.baseline_edits + " → " + result.edits + (delta > 0 ? " · 增加 " + delta : "")
       : sample.input_mismatch ? "音频摘要冲突，未计入共同评分集合" : "未计入共同评分集合，保留原始结果");
     const list = byId("candidate-sample-results");
     list.replaceChildren();
-    for (const [id, status, transcript] of [
-      [data.baseline.id, sample.baseline_status, sample.baseline_text],
-      [runPicker.value, result.status, result.text],
-    ]) {
+    const outputs = [
+      ["基线 · " + data.baseline.id, sample.baseline_status, sample.baseline_text],
+      [(replayRow ? "原方案 · " : "候选 · ") + runPicker.value, result.status, result.text],
+    ];
+    if (replayRow) {
+      const repaired = sample.candidates[repairId];
+      outputs.push(["修复后 · " + repairId, repaired.status, repaired.text]);
+    }
+    for (const [id, status, transcript] of outputs) {
       const row = create("div", null, "tensor-row");
       row.append(create("strong", id), create("span", labels[status] + " · " + (transcript?.trim() || "∅")));
       list.append(row);
     }
+    byId("candidate-replay-transition").hidden = !replayRow;
+    if (replayRow) text("candidate-replay-transition", "复验 · " + describeReplayRow(replayRow));
 
     const finding = result.finding;
     const regressed = finding.code === "transcribed" && delta > 0;
@@ -456,43 +522,51 @@ function showCandidateDiagnosis(data, create) {
         + " · 生成数 " + (result.generated_count ?? "未采集") + " · 首 token ID " + (result.first_token_id ?? "未采集"), "muted"));
     }
     if (!regressed) panel.append(create("p", finding.attribution, "muted"));
-    showAudioEvidence(result, null, "comparison-");
-    showDecodeEvidence(result.decode_evidence, [], "comparison-");
-    byId("candidate-evidence").open = Boolean(result.boundary);
+    const pairedReplay = replayRow?.transition === "input_mismatch" ? null : replayRow;
+    showAudioEvidence(result, pairedReplay, "comparison-");
+    showDecodeEvidence(result.decode_evidence, pairedReplay?.decode_evidence, "comparison-");
+    byId("candidate-evidence").open = Boolean(result.boundary || pairedReplay?.boundary);
     if (finding.action) {
       const action = finding.action;
+      const change = Object.entries(action.change);
+      const replayed = replayRow && change.length === 1 && replay.change[change[0][0]] === change[0][1];
       const plan = create("details");
       plan.open = true;
-      plan.append(create("summary", "建议复验 · " + action.title),
-        create("p", "只改 " + Object.entries(action.change).map(([key, value]) => key + " → " + value).join("、")),
+      plan.append(create("summary", (replayed ? "已导入复验 · " : "建议复验 · ") + action.title),
+        create("p", "只改 " + change.map(([key, value]) => key + " → " + value).join("、")),
         create("p", "对照条件 · " + action.controls, "muted"), create("p", "验证方式 · " + action.verify, "muted"));
       panel.append(plan);
     }
   }
 
-  function populate() {
-    const prior = picker.value;
+  function populate(preferred = picker.value) {
+    for (const group of replayFilters) group.hidden = group.disabled = runPicker.value !== originalId;
+    if (filter.selectedOptions[0]?.parentElement.disabled) filter.value = "all";
     picker.replaceChildren();
     for (const sample of data.samples) {
       const result = sample.candidates[runPicker.value];
       const regressed = result.edits != null && result.edits > sample.baseline_edits;
       if (filter.value === "issues" && result.finding.code === "transcribed" && !regressed) continue;
-      picker.add(new Option(sample.id + " · " + (regressed && result.finding.code === "transcribed"
-        ? "编辑数增加" : labels[result.finding.code]), sample.id));
+      const replayFilter = !["all", "issues"].includes(filter.value);
+      const replayRow = replayRows.get(sample.id);
+      if (replayFilter && !matchesReplayFilter(replayRow, filter.value)) continue;
+      const label = replayFilter ? transitions[replayRow.transition] : regressed && result.finding.code === "transcribed"
+        ? "编辑数增加" : labels[result.finding.code];
+      picker.add(new Option(sample.id + " · " + label, sample.id));
     }
-    if (Array.from(picker.options).some(option => option.value === prior)) picker.value = prior;
+    if (Array.from(picker.options).some(option => option.value === preferred)) picker.value = preferred;
     picker.disabled = !picker.options.length;
     text("diagnosis-count", picker.options.length ? "显示 " + picker.options.length + " / " + rows.size + " 条录音" : "没有符合筛选条件的录音。");
     renderSample();
   }
 
-  runPicker.addEventListener("change", populate);
-  filter.addEventListener("change", populate);
+  runPicker.addEventListener("change", () => populate());
+  filter.addEventListener("change", () => populate());
   picker.addEventListener("change", renderSample);
-  populate();
-  return runId => {
+  populate(replay?.work_order.sample_id);
+  return (runId, filterValue) => {
     runPicker.value = runId;
-    filter.value = "issues";
+    filter.value = filterValue;
     populate();
     (picker.disabled ? filter : picker).focus();
   };
@@ -510,7 +584,7 @@ function showCandidates(data) {
   document.querySelector("h1").textContent = "候选方案对照";
   text("model", data.model + " · 基线 " + data.baseline.id + " · " + data.samples.length + " 条评测记录"
     + (data.input_mismatch_samples ? " · " + data.input_mismatch_samples + " 条音频摘要冲突" : ""));
-  const showIssues = showCandidateDiagnosis(data, create);
+  const selectSamples = showCandidateDiagnosis(data, create);
   for (const run of data.candidates) {
     const counts = run.outcomes;
     const precision = Object.entries(run.precision).map(([component, value]) => component + " " + value).join(" · ");
@@ -530,7 +604,7 @@ function showCandidates(data) {
     const button = create("button", "查看异常录音", "outcome-link");
     button.type = "button";
     button.setAttribute("aria-label", "查看 " + run.id + " 的异常录音");
-    button.addEventListener("click", () => showIssues(run.id));
+    button.addEventListener("click", () => selectSamples(run.id, "issues"));
     group.append(create("h3", run.id), create("p", precision, "muted"), chart, key, button);
     byId("candidate-outcomes").append(group);
   }
@@ -611,6 +685,11 @@ function showCandidates(data) {
   if (data.performance) showCandidatePerformance(data);
   if (data.acceptance) showAcceptance(data);
   showWorkerReceipts(data, create);
+  if (data.replay) {
+    const original = data.replay.work_order.candidate;
+    byId("candidate-replay").append(byId("replay-overview"));
+    showReplay(data.replay, selection => selectSamples(original.id, selection));
+  }
   byId("candidate-board").hidden = false;
 }
 
@@ -721,10 +800,9 @@ function setup(data) {
       metrics.append(row);
     }
   }
-  if (replay) showReplay(replay, candidate);
-
   const list = byId("samples");
   const filter = byId("sample-filter");
+  if (replay) addReplayFilters(filter, replay);
   let selected = replay?.work_order.sample_id;
   function renderSample(sample, button) {
     selected = sample.id;
@@ -734,13 +812,13 @@ function setup(data) {
     text("reference", sample.reference == null ? "参考文本未提供" : "参考 " + sample.reference);
     result("baseline", sample.baseline, baseline);
     result("candidate", sample.candidate, candidate);
-    showAudioEvidence(sample, replayRows.get(sample.id));
-    showDecodeEvidence(sample.decode_evidence, replayRows.get(sample.id)?.decode_evidence);
-    if (replay) {
-      const row = replayRows.get(sample.id);
+    const row = replayRows.get(sample.id);
+    const pairedReplay = row?.transition === "input_mismatch" ? null : row;
+    showAudioEvidence(sample, pairedReplay);
+    showDecodeEvidence(sample.decode_evidence, pairedReplay?.decode_evidence);
+    if (row) {
       result("repaired", row.output, replay.repair_run);
-      const edits = row.edits ? " · 编辑数 " + row.edits.original + " → " + row.edits.repaired : "";
-      text("sample-transition", transitions[row.transition] + edits);
+      text("sample-transition", describeReplayRow(row));
       byId("sample-transition").hidden = false;
     }
     const finding = sample.finding;
@@ -764,8 +842,7 @@ function setup(data) {
     const rows = data.samples.filter((sample) => {
       if (filter.value === "all") return true;
       if (filter.value === "issues") return sample.finding.code !== "transcribed";
-      const row = replayRows.get(sample.id);
-      return row && (row.transition !== "stable_text" || row.edits?.original !== row.edits?.repaired);
+      return matchesReplayFilter(replayRows.get(sample.id), filter.value);
     });
     let activeButton;
     for (const sample of rows) {
@@ -787,6 +864,15 @@ function setup(data) {
   }
 
   filter.addEventListener("change", populate);
+  if (replay) {
+    showReplay(replay, selection => {
+      filter.value = selection;
+      populate();
+      (list.querySelector('[aria-pressed="true"]') ?? filter).focus();
+    });
+    byId("repaired-column").hidden = false;
+    byId("transcripts").classList.add("with-repair");
+  }
   populate();
   byId("workbench").hidden = false;
 }

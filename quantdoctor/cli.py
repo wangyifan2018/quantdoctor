@@ -32,20 +32,40 @@ def emit(document, output=None):
             stream.write(encoded)
 
 
-def _replay_options(command):
-    command.add_argument("--costs", type=Path)
+def _checkpoint_options(command):
     command.add_argument("--original-checkpoint", type=Path)
     command.add_argument("--repaired-checkpoint", type=Path)
 
 
-def _replay(before, args):
-    after = Comparison.parse(load_json(args.retest))
+def _checkpoint_paths(args):
     checkpoints = args.original_checkpoint, args.repaired_checkpoint
     require(all(checkpoints) or not any(checkpoints), "both checkpoint directories are required for audit")
+    return checkpoints if all(checkpoints) else None
+
+
+def _replay_options(command):
+    command.add_argument("--costs", type=Path)
+    _checkpoint_options(command)
+
+
+def _replay(before, args):
+    after = Comparison.parse(load_json(args.retest))
     return verify_repair(
         before, after, args.sample_id, load_json(args.costs) if args.costs else None,
-        checkpoints=checkpoints if all(checkpoints) else None,
+        checkpoints=_checkpoint_paths(args),
     )
+
+
+def _compare_replay(comparisons, selection, performance, checkpoints):
+    original, repaired, sample_id = selection
+    runs = {comparison.candidate.id: comparison for comparison in comparisons}
+    require(original in runs and repaired in runs, "replay run IDs must name candidates in the comparison")
+    costs = None
+    if performance is not None:
+        costs = {"schema_version": 1, "protocol_id": performance["protocol_id"]}
+        for side, run_id in (("original", original), ("repaired", repaired)):
+            costs[side] = {"run_id": run_id, **performance["runs"][run_id]["values"]}
+    return verify_repair(runs[original], runs[repaired], sample_id, costs, checkpoints=checkpoints)
 
 
 def main(argv=None):
@@ -56,6 +76,9 @@ def main(argv=None):
     compare.add_argument("--reference-run", help="Use this run for paired error-rate differences")
     compare.add_argument("--costs", type=Path, help="Attach same-protocol candidate performance records")
     compare.add_argument("--policy", type=Path, help="Evaluate a deployment policy against imported evidence")
+    compare.add_argument("--replay", nargs=3, metavar=("ORIGINAL", "REPAIRED", "SAMPLE_ID"),
+                         help="Show a controlled precision repair between two candidate run IDs")
+    _checkpoint_options(compare)
     inspect = commands.add_parser("inspect", help="Inspect a local HF safetensors checkpoint")
     inspect.add_argument("snapshot", type=Path)
     inspect.add_argument("--hash-weights", action="store_true")
@@ -143,10 +166,15 @@ def main(argv=None):
     try:
         if args.command in {"compare", "inspect", "audit-checkpoints", "preflight"}:
             if args.command == "compare":
-                data = compare_candidates([Comparison.parse(load_json(path)) for path in args.comparisons],
-                                          args.reference_run, costs=load_json(args.costs) if args.costs else None)
+                checkpoints = _checkpoint_paths(args)
+                require(checkpoints is None or args.replay, "checkpoint audit requires --replay")
+                comparisons = [Comparison.parse(load_json(path)) for path in args.comparisons]
+                data = compare_candidates(comparisons, args.reference_run,
+                                          costs=load_json(args.costs) if args.costs else None)
                 if args.policy:
                     data["acceptance"] = evaluate_acceptance(data, load_json(args.policy))
+                if args.replay:
+                    data["replay"] = _compare_replay(comparisons, args.replay, data.get("performance"), checkpoints)
             elif args.command == "inspect":
                 data = inspect_checkpoint(args.snapshot, hash_weights=args.hash_weights)
             elif args.command == "audit-checkpoints":
