@@ -2,11 +2,10 @@
 
 from dataclasses import dataclass
 from hashlib import sha256
-import json
 from pathlib import Path, PurePosixPath
 import wave
 
-from .model import Comparison, file_sha256, load_json, nonempty, parse_speaker_id, require
+from .model import Comparison, document_sha256, file_sha256, load_json, nonempty, parse_speaker_id, require
 
 
 @dataclass(frozen=True)
@@ -31,7 +30,7 @@ class ASRDataset:
     def digest(self, split):
         rows = [[row.id, row.sha256, row.transcript, row.language, *([row.speaker_id] if row.speaker_id else [])]
                 for row in self.select(split)]
-        return _digest_json({"schema_version": 1, "split": split, "samples": rows})
+        return document_sha256({"schema_version": 1, "split": split, "samples": rows})
 
     def summary(self):
         warnings = []
@@ -57,11 +56,6 @@ class ASRDataset:
                                   "incomplete" if missing_speakers else "disjoint_declared_ids"),
             "warnings": warnings,
         }
-
-
-def _digest_json(document):
-    encoded = json.dumps(document, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
-    return sha256(encoded.encode("ascii")).hexdigest()
 
 
 def _audio_path(value, root, sample_id):
@@ -161,6 +155,6 @@ def prepare_evaluation(dataset: ASRDataset, metadata, audio_root: PurePosixPath 
     request = {"batch_size": 1, "temperature": 1.0, "top_k": 1, "top_p": 1.0,
                "max_generate_length": 256, "requests": requests}
     scoring = {**metadata, "samples": index, "evaluation_dataset_sha256": dataset.digest("evaluation"),
-               "request_document_sha256": _digest_json(request)}
+               "request_document_sha256": document_sha256(request)}
     Comparison.parse(scoring)
     return request, scoring

@@ -23,6 +23,17 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(report["candidates"][1]["outcomes"]["missing"], 1)
         self.assertIsNone(report["metrics"]["wer"]["candidates"][0]["interval_95"])
 
+    def test_sample_drilldown_exposes_paired_evidence_edits_and_repair(self):
+        report = self.compare(self.original, self.repaired)
+        sample = next(row for row in report["samples"] if row["id"] == "ASR-014")
+        candidate = sample["candidates"][self.original["candidate"]["id"]]
+        self.assertEqual(candidate["finding"]["code"], "first_step_eos")
+        self.assertEqual(candidate["finding"]["action"]["change"], {"precision.audio": "fp16"})
+        self.assertEqual(candidate["boundary"]["stage"], "encoder")
+        self.assertLess(candidate["decode_evidence"][0]["candidate_margin"], 0)
+        self.assertEqual(sample["baseline_edits"], 0)
+        self.assertEqual(candidate["edits"], sample["reference_units"])
+
     def test_paired_interval_is_deterministic_and_uses_shared_reference_lengths(self):
         for index in range(20):
             reference = "open door" if index % 2 == 0 else "door"

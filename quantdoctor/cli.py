@@ -20,6 +20,7 @@ from .qat import QATRecipe, load_qat_inputs, template
 from .preflight import TargetProfile, preflight
 from .quality import compare_candidates
 from .replay import verify_repair
+from .worker_evidence import import_worker_edge
 
 
 def emit(document, output=None):
@@ -78,14 +79,14 @@ def main(argv=None):
     evaluation.add_argument("comparison_metadata", type=Path)
     evaluation.add_argument("--audio-root", type=PurePosixPath, help="Dataset root as seen on the target")
     evaluation.add_argument("--output", type=Path, required=True)
-    importer = commands.add_parser("import-edge", help="Pair two llm_inference result files")
-    for name in ("manifest", "baseline", "candidate"):
-        importer.add_argument(name, type=Path)
-    importer.add_argument("--baseline-trace", type=Path)
-    importer.add_argument("--candidate-trace", type=Path)
-    importer.add_argument("--baseline-audio", type=Path)
-    importer.add_argument("--candidate-audio", type=Path)
-    importer.add_argument("-o", "--output", type=Path)
+    edge_import = commands.add_parser("import-edge", help="Pair two llm_inference result files")
+    worker_import = commands.add_parser("import-worker-edge", help="Pair two locally verified infer bundles")
+    for importer in (edge_import, worker_import):
+        for name in ("manifest", "baseline", "candidate"):
+            importer.add_argument(name, type=Path)
+        for flag in ("baseline-trace", "candidate-trace", "baseline-audio", "candidate-audio"):
+            importer.add_argument(f"--{flag}", type=Path)
+        importer.add_argument("-o", "--output", type=Path)
     planner = commands.add_parser("plan", help="Export a single-variable work order for a sample")
     planner.add_argument("comparison", type=Path)
     planner.add_argument("sample_id")
@@ -175,14 +176,18 @@ def main(argv=None):
                 emit(scoring, stage / "manifest.json")
                 stage.rename(output)
             print(output)
-        elif args.command == "import-edge":
-            bundle = import_edge(
-                *(load_json(path) for path in (args.manifest, args.baseline, args.candidate)),
+        elif args.command in {"import-edge", "import-worker-edge"}:
+            observations = dict(
                 baseline_trace=load_json(args.baseline_trace) if args.baseline_trace else None,
                 candidate_trace=load_json(args.candidate_trace) if args.candidate_trace else None,
                 baseline_audio=load_json(args.baseline_audio) if args.baseline_audio else None,
                 candidate_audio=load_json(args.candidate_audio) if args.candidate_audio else None,
             )
+            manifest = load_json(args.manifest)
+            if args.command == "import-worker-edge":
+                bundle = import_worker_edge(manifest, args.baseline, args.candidate, **observations)
+            else:
+                bundle = import_edge(manifest, load_json(args.baseline), load_json(args.candidate), **observations)
             Comparison.parse(bundle)
             emit(bundle, args.output)
         elif args.command == "plan":

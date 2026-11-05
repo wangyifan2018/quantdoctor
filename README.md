@@ -42,7 +42,7 @@ python3 -m quantdoctor serve comparison.json
 
 已有本地 HF 权重时，可在 Mac 上用 `inspect` 查看组件体积、存储 dtype 和 scale，用 `audit-checkpoints` 检查修复前后的实际张量变化。见 [模型产物检查](docs/CHECKPOINT.md)。
 
-多个候选可在同一批样本上比较覆盖、CER/WER 和相对指定参照的配对区间。见 [多候选对照](docs/COMPARE.md)。可附上 [部署门槛规则](docs/ACCEPTANCE.md)逐项检查阈值与缺失证据。
+多个候选可在同一批样本上比较结果分布、CER/WER 和配对区间。从「查看异常录音」下钻到参考文本、两次转写、音频边界、EOS 分差与单变量复验建议。见 [多候选对照](docs/COMPARE.md)。可附上 [部署门槛规则](docs/ACCEPTANCE.md)逐项检查阈值与缺失证据。
 
 ## 选择性 QAT
 
@@ -84,6 +84,6 @@ python3 -m quantdoctor job-result-validate examples/worker-job.json examples/wor
 
 示例是接口 fixture。校验只检查阶段字段、产物角色和 SHA-256 形状，以及回传是否匹配该 job。设备适配器和实际执行证据按 [产品架构](docs/ARCHITECTURE.md) 分阶段接入。
 
-有真实输入或回传文件时，可以生成摘要并校验实际产物。见 [离线产物校验](docs/ARTIFACTS.md)。
+有真实输入或回传文件时，可以生成摘要并校验实际产物。`import-worker-edge` 将本地核对过的 Infer 工单、engine、请求和响应关联到评分报告。见 [离线产物校验](docs/ARTIFACTS.md)。
 
 选定候选后，可先用 [目标设备预检](docs/PREFLIGHT.md)检查已知精度限制，再生成并核对各阶段工单。

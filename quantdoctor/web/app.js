@@ -110,14 +110,14 @@ function showReplay(replay, original) {
   byId("transcripts").classList.add("with-repair");
 }
 
-function showAudioEvidence(original, repaired) {
+function showAudioEvidence(original, repaired, prefix = "") {
   const stages = { audio_input: "输入音频", mel: "Mel 特征", encoder: "Encoder 输出", decode: "生成 token" };
   const states = {
     same: "内容摘要一致", different: "观察到差异", missing: "缺少配对采集",
     input_mismatch: "实际音频不同，暂停比较", run_mismatch: "运行条件或请求摘要不匹配",
     representation_mismatch: "采集表示不同", inconsistent_capture: "摘要与抽样记录冲突",
   };
-  const container = byId("audio-stages");
+  const container = byId(prefix + "audio-stages");
   container.replaceChildren();
   const sides = repaired ? [["原候选", original], ["修复后", repaired]] : [["候选", original]];
   const summary = sides.flatMap(([label, evidence]) => evidence.boundary ? [
@@ -125,7 +125,7 @@ function showAudioEvidence(original, repaired) {
       + (evidence.boundary.step == null ? "" : "（生成步 " + evidence.boundary.step + "）")
       + (evidence.boundary.earlier_evidence_complete ? "" : "，前序边界证据有缺口"),
   ] : []);
-  text("audio-note", summary.length ? summary.join(" · ") + "。差异本身不证明根因。"
+  text(prefix + "audio-note", summary.length ? summary.join(" · ") + "。差异本身不证明根因。"
     : "当前没有可定位的差异。未采集项不能作为一致证据。");
   for (const stage of ["audio_input", "mel", "encoder"]) {
     const row = document.createElement("div");
@@ -152,17 +152,17 @@ function showAudioEvidence(original, repaired) {
   }
 }
 
-function showDecodeEvidence(original, repaired = []) {
-  const picker = byId("decode-step");
-  const chart = byId("decode-chart");
+function showDecodeEvidence(original, repaired = [], prefix = "") {
+  const picker = byId(prefix + "decode-step");
+  const chart = byId(prefix + "decode-chart");
   const source = new Map(original.map(row => [row.step, row]));
   const repair = new Map(repaired.map(row => [row.step, row]));
   const steps = [...new Set([...source.keys(), ...repair.keys()])].sort((a, b) => a - b);
   picker.replaceChildren();
   chart.replaceChildren();
-  byId("step-control").hidden = steps.length < 2;
+  byId(prefix + "step-control").hidden = steps.length < 2;
   if (!steps.length) {
-    text("decode-note", "未采集 token 分数。可以导入与运行及请求匹配的解码证据。");
+    text(prefix + "decode-note", "未采集 token 分数。可以导入与运行及请求匹配的解码证据。");
     picker.onchange = null;
     return;
   }
@@ -178,14 +178,14 @@ function showDecodeEvidence(original, repaired = []) {
     const sameStage = pair?.status !== "aligned" || pair.score_stage === fixed?.score_stage;
     const repairedMargin = sameStage ? fixed?.candidate_margin : null;
     const stage = anchor?.score_stage === "raw_logits" ? "原始 logits" : "规则处理后 logits";
-    text("decode-note", anchor?.status === "aligned"
+    text(prefix + "decode-note", anchor?.status === "aligned"
       ? "生成步 " + step + " · " + stage + " · 分差 = 基线选中的 token #" + anchor.reference_id
         + " 分数 − 最高有效停止分数。中线为零。"
       : "生成步 " + step + " · 分差不可比。下方保留已观察到的 token 选择。");
     const rows = [
       ["基线", anchor?.baseline_margin, pair?.baseline_selected ?? fixed?.baseline_selected,
         pair?.baseline_top1 ?? fixed?.baseline_top1, anchor?.status],
-      ["原候选", pair?.candidate_margin, pair?.candidate_selected, pair?.candidate_top1, pair?.status],
+      [repaired.length ? "原候选" : "候选", pair?.candidate_margin, pair?.candidate_selected, pair?.candidate_top1, pair?.status],
     ];
     if (repaired.length) rows.push(["修复后", repairedMargin, fixed?.candidate_selected, fixed?.candidate_top1,
       sameStage ? fixed?.status : "score_stage_mismatch"]);
@@ -363,6 +363,7 @@ function showAcceptance(data) {
     empty_increase_pp: ["空转写增量", " 个百分点"], unavailable_rate: ["失败或缺失率", "%"],
     rtf_increase_pct: ["RTF P95 增量", "%"], resource_savings_pct: ["内存或产物节省", "%"],
     input_integrity: ["输入一致性", ""], precision_evidence: ["精度证据", ""],
+    worker_evidence: ["已关联运行产物", " 份"],
   };
   text("acceptance-policy", "规则 " + policy.policy_id + " · " + sources[policy.source] + " · 板端部署待独立验证");
   for (const candidate of policy.candidates) {
@@ -374,10 +375,12 @@ function showAcceptance(data) {
       const row = document.createElement("p");
       const [label, unit] = labels[check.code];
       const format = value => value == null ? "缺失"
-        : (check.code === "unavailable_rate" ? value * 100 : value).toFixed(2) + unit;
+        : check.code === "worker_evidence" ? value + unit
+          : (check.code === "unavailable_rate" ? value * 100 : value).toFixed(2) + unit;
+      const lowerBound = check.code === "resource_savings_pct" || check.code === "worker_evidence";
       row.textContent = label + " · " + checks[check.status]
-        + " · 观测 " + format(check.observed)
-        + (check.limit == null ? "" : (check.code === "resource_savings_pct" ? " · 至少 " : " · 至多 ") + format(check.limit))
+        + (check.observed == null ? "" : " · 观测 " + format(check.observed))
+        + (check.limit == null ? "" : (lowerBound ? " · 至少 " : " · 至多 ") + format(check.limit))
         + (check.interval_95 ? " · 95% [" + check.interval_95.map(format).join(", ") + "]" : "")
         + (check.reason ? " · " + check.reason : "");
       panel.append(row);
@@ -385,6 +388,114 @@ function showAcceptance(data) {
     byId("acceptance-candidates").append(panel);
   }
   byId("candidate-acceptance").hidden = false;
+}
+
+function showWorkerReceipts(data, create) {
+  const runs = [data.baseline, ...data.candidates];
+  if (data.baseline.source !== "target" && !runs.some(run => run.worker_evidence)) return;
+  for (const run of runs) {
+    const receipt = run.worker_evidence;
+    const panel = create("details", null, "worker-receipt");
+    panel.append(create("summary", run.id + (receipt ? " · 已核对" : " · 未关联")));
+    if (receipt) {
+      for (const [label, key] of [
+        ["Infer 工单", "job_id"], ["执行配置", "profile_id"], ["Engine 摘要", "engine_sha256"],
+        ["请求文件摘要", "request_artifact_sha256"], ["响应文件摘要", "response_artifact_sha256"],
+        ["评分记录摘要", "scoring_sha256"],
+      ]) {
+        const row = create("p", label + " ");
+        row.append(create("code", receipt[key]));
+        panel.append(row);
+      }
+    } else {
+      panel.append(create("p", "可用 import-worker-edge 导入工单和产物。", "muted"));
+    }
+    byId("worker-receipts").append(panel);
+  }
+  byId("worker-evidence").hidden = false;
+}
+
+function showCandidateDiagnosis(data, create) {
+  const runPicker = byId("diagnosis-run");
+  const filter = byId("diagnosis-filter");
+  const picker = byId("candidate-sample");
+  const rows = new Map(data.samples.map(sample => [sample.id, sample]));
+  for (const run of data.candidates) runPicker.add(new Option(run.id));
+
+  function renderSample() {
+    const sample = rows.get(picker.value);
+    byId("candidate-detail").hidden = !sample;
+    if (!sample) return;
+    const result = sample.candidates[runPicker.value];
+    text("candidate-reference", "参考转写 " + (sample.reference ?? "未提供")
+      + (sample.speaker_id ? " · 说话人 " + sample.speaker_id : ""));
+    const scored = sample.common_scoring;
+    const delta = scored ? result.edits - sample.baseline_edits : null;
+    text("candidate-cohort", scored ? sample.metric.toUpperCase() + " · " + sample.reference_units + " 个参考单位 · 编辑数 "
+      + sample.baseline_edits + " → " + result.edits + (delta > 0 ? " · 增加 " + delta : "")
+      : sample.input_mismatch ? "音频摘要冲突，未计入共同评分集合" : "未计入共同评分集合，保留原始结果");
+    const list = byId("candidate-sample-results");
+    list.replaceChildren();
+    for (const [id, status, transcript] of [
+      [data.baseline.id, sample.baseline_status, sample.baseline_text],
+      [runPicker.value, result.status, result.text],
+    ]) {
+      const row = create("div", null, "tensor-row");
+      row.append(create("strong", id), create("span", labels[status] + " · " + (transcript?.trim() || "∅")));
+      list.append(row);
+    }
+
+    const finding = result.finding;
+    const regressed = finding.code === "transcribed" && delta > 0;
+    const panel = byId("candidate-finding");
+    panel.replaceChildren(create("h3", regressed ? "有转写，编辑数增加" : labels[finding.code]),
+      create("p", regressed ? "本条录音相对参考转写新增 " + delta + " 处编辑。可在相同输入上复跑高精度对照，定位退化环节。"
+        : finding.evidence));
+    if (result.text != null && finding.code !== "transcribed") {
+      panel.append(create("p", "候选停止原因 " + (result.finish_reason ?? "未采集")
+        + " · 生成数 " + (result.generated_count ?? "未采集") + " · 首 token ID " + (result.first_token_id ?? "未采集"), "muted"));
+    }
+    if (!regressed) panel.append(create("p", finding.attribution, "muted"));
+    showAudioEvidence(result, null, "comparison-");
+    showDecodeEvidence(result.decode_evidence, [], "comparison-");
+    byId("candidate-evidence").open = Boolean(result.boundary);
+    if (finding.action) {
+      const action = finding.action;
+      const plan = create("details");
+      plan.open = true;
+      plan.append(create("summary", "建议复验 · " + action.title),
+        create("p", "只改 " + Object.entries(action.change).map(([key, value]) => key + " → " + value).join("、")),
+        create("p", "对照条件 · " + action.controls, "muted"), create("p", "验证方式 · " + action.verify, "muted"));
+      panel.append(plan);
+    }
+  }
+
+  function populate() {
+    const prior = picker.value;
+    picker.replaceChildren();
+    for (const sample of data.samples) {
+      const result = sample.candidates[runPicker.value];
+      const regressed = result.edits != null && result.edits > sample.baseline_edits;
+      if (filter.value === "issues" && result.finding.code === "transcribed" && !regressed) continue;
+      picker.add(new Option(sample.id + " · " + (regressed && result.finding.code === "transcribed"
+        ? "编辑数增加" : labels[result.finding.code]), sample.id));
+    }
+    if (Array.from(picker.options).some(option => option.value === prior)) picker.value = prior;
+    picker.disabled = !picker.options.length;
+    text("diagnosis-count", picker.options.length ? "显示 " + picker.options.length + " / " + rows.size + " 条录音" : "没有符合筛选条件的录音。");
+    renderSample();
+  }
+
+  runPicker.addEventListener("change", populate);
+  filter.addEventListener("change", populate);
+  picker.addEventListener("change", renderSample);
+  populate();
+  return runId => {
+    runPicker.value = runId;
+    filter.value = "issues";
+    populate();
+    (picker.disabled ? filter : picker).focus();
+  };
 }
 
 function showCandidates(data) {
@@ -399,12 +510,28 @@ function showCandidates(data) {
   document.querySelector("h1").textContent = "候选方案对照";
   text("model", data.model + " · 基线 " + data.baseline.id + " · " + data.samples.length + " 条评测记录"
     + (data.input_mismatch_samples ? " · " + data.input_mismatch_samples + " 条音频摘要冲突" : ""));
+  const showIssues = showCandidateDiagnosis(data, create);
   for (const run of data.candidates) {
     const counts = run.outcomes;
     const precision = Object.entries(run.precision).map(([component, value]) => component + " " + value).join(" · ");
     const group = create("section", null, "checkpoint-group");
-    group.append(create("h3", run.id), create("p", precision, "muted"),
-      create("p", "有文本 " + counts.text + " · 空 " + counts.empty + " · 失败 " + counts.failed + " · 缺失 " + counts.missing));
+    const chart = create("div", null, "outcome-chart");
+    chart.setAttribute("aria-hidden", "true");
+    const key = create("div", null, "outcome-key muted");
+    for (const [outcome, label] of Object.entries({text: "有转写", empty: "空转写", failed: "失败", missing: "缺失"})) {
+      const style = "outcome-" + outcome;
+      if (counts[outcome]) {
+        const segment = create("span", null, style);
+        segment.style.flexGrow = counts[outcome];
+        chart.append(segment);
+      }
+      key.append(create("span", label + " " + counts[outcome], style));
+    }
+    const button = create("button", "查看异常录音", "outcome-link");
+    button.type = "button";
+    button.setAttribute("aria-label", "查看 " + run.id + " 的异常录音");
+    button.addEventListener("click", () => showIssues(run.id));
+    group.append(create("h3", run.id), create("p", precision, "muted"), chart, key, button);
     byId("candidate-outcomes").append(group);
   }
   for (const [metric, summary] of Object.entries(data.metrics)) {
@@ -483,29 +610,7 @@ function showCandidates(data) {
   }
   if (data.performance) showCandidatePerformance(data);
   if (data.acceptance) showAcceptance(data);
-  const picker = byId("candidate-sample");
-  for (const sample of data.samples) picker.add(new Option(sample.id));
-  const rows = new Map(data.samples.map(sample => [sample.id, sample]));
-  function renderSample() {
-    const sample = rows.get(picker.value);
-    text("candidate-reference", "参考转写 " + (sample.reference ?? "未提供")
-      + (sample.speaker_id ? " · 说话人 " + sample.speaker_id : ""));
-    text("candidate-cohort", sample.common_scoring ? "计入共同评分集合"
-      : sample.input_mismatch ? "实际输入音频不一致，未计入共同评分集合" : "未计入共同评分集合，保留原始结果");
-    const list = byId("candidate-sample-results");
-    list.replaceChildren();
-    const outputs = [
-      [data.baseline.id, sample.baseline_status, sample.baseline_text],
-      ...data.candidates.map(run => [run.id, sample.candidates[run.id].status, sample.candidates[run.id].text]),
-    ];
-    for (const [id, status, transcript] of outputs) {
-      const row = create("div", null, "tensor-row");
-      row.append(create("strong", id), create("span", (labels[status] ?? status) + " · " + (transcript?.trim() || "∅")));
-      list.append(row);
-    }
-  }
-  picker.addEventListener("change", renderSample);
-  renderSample();
+  showWorkerReceipts(data, create);
   byId("candidate-board").hidden = false;
 }
 

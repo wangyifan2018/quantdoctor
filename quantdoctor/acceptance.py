@@ -132,6 +132,10 @@ def evaluate_acceptance(report, policy):
                                 reason="存在实际音频与评测清单或运行记录冲突"))
         if "unknown" in run["precision"].values():
             checks.append(_rule("precision_evidence", "insufficient", reason="候选包含未知精度组件"))
+        if baseline["source"] == "target":
+            linked = sum(bool(item.get("worker_evidence")) for item in (baseline, run))
+            checks.append(_rule("worker_evidence", "meets" if linked == 2 else "insufficient", linked, 2,
+                                reason="基线和候选均需关联本地校验过的 Infer 产物" if linked < 2 else None))
         statuses = {row["status"] for row in checks}
         state = "outside_policy" if "fails" in statuses else "insufficient_evidence" if "insufficient" in statuses else "meets_policy"
         outcomes.append({"run_id": run_id, "status": state, "checks": checks})

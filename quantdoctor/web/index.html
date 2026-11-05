@@ -33,14 +33,36 @@
         <p id="acceptance-policy" class="muted"></p>
         <div id="acceptance-candidates"></div>
       </section>
+      <section id="worker-evidence" class="replay-overview" hidden>
+        <h2>运行产物</h2>
+        <p class="muted">本地导入核对工单与文件摘要。设备执行和实际精度仍需独立验证。</p>
+        <div id="worker-receipts"></div>
+      </section>
       <section class="replay-overview">
-        <div class="replay-heading">
-          <h2>逐样本对照</h2>
+        <h2>逐样本诊断</h2>
+        <div class="sample-controls">
+          <label>诊断候选 <select id="diagnosis-run"></select></label>
+          <label>范围 <select id="diagnosis-filter">
+            <option value="all">全部样本</option>
+            <option value="issues">仅异常或编辑数增加</option>
+          </select></label>
           <label>样本 <select id="candidate-sample"></select></label>
         </div>
-        <p id="candidate-reference"></p>
-        <p id="candidate-cohort" class="muted"></p>
-        <div id="candidate-sample-results" aria-live="polite"></div>
+        <p id="diagnosis-count" class="muted" role="status"></p>
+        <div id="candidate-detail" aria-live="polite">
+          <p id="candidate-reference"></p>
+          <p id="candidate-cohort" class="muted"></p>
+          <div id="candidate-sample-results"></div>
+          <section id="candidate-finding" class="finding"></section>
+          <details id="candidate-evidence">
+            <summary>查看音频边界与 EOS 分差</summary>
+            <p id="comparison-audio-note" class="muted"></p>
+            <div id="comparison-audio-stages"></div>
+            <label id="comparison-step-control" hidden>生成步 <select id="comparison-decode-step"></select></label>
+            <p id="comparison-decode-note" class="muted"></p>
+            <div id="comparison-decode-chart"></div>
+          </details>
+        </div>
       </section>
     </section>
     <section id="checkpoint" hidden>

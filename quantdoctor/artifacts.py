@@ -13,10 +13,14 @@ def _raise_walk_error(error):
     raise error
 
 
+def file_artifact_sha256(raw_sha256):
+    return sha256(b"quantdoctor:file:v1\0" + bytes.fromhex(raw_sha256)).hexdigest()
+
+
 def artifact_digest(path: Path):
     require(not path.is_symlink(), f"artifact symlinks are not supported: {path}")
     if path.is_file():
-        return sha256(b"quantdoctor:file:v1\0" + bytes.fromhex(file_sha256(path))).hexdigest()
+        return file_artifact_sha256(file_sha256(path))
     require(path.is_dir(), f"expected a regular artifact file or directory: {path}")
     files = []
     for root, dirs, names in os.walk(path, onerror=_raise_walk_error):

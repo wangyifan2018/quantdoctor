@@ -1,7 +1,7 @@
 """Versioned evidence exchanged between the CLI, Web workbench and workers."""
 
 from dataclasses import dataclass
-from hashlib import file_digest
+from hashlib import file_digest, sha256
 import json
 from pathlib import Path
 import re
@@ -44,6 +44,36 @@ def file_sha256(path):
         return file_digest(stream, "sha256").hexdigest()
 
 
+def document_sha256(document):
+    canonical = json.dumps(document, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False)
+    return sha256(canonical.encode("ascii")).hexdigest()
+
+
+@dataclass(frozen=True)
+class WorkerEvidence:
+    job_id: str
+    profile_id: str
+    source: str
+    engine_sha256: str
+    request_artifact_sha256: str
+    response_artifact_sha256: str
+    request_document_sha256: str
+    evaluation_dataset_sha256: str
+    scoring_sha256: str
+
+    @classmethod
+    def parse(cls, value):
+        if value is None:
+            return None
+        require(isinstance(value, dict) and value.keys() == cls.__dataclass_fields__.keys(),
+                "invalid worker evidence fields")
+        require(nonempty(value["profile_id"]) and value["source"] in ("fixture", "worker"),
+                "invalid worker evidence profile or source")
+        for key in cls.__dataclass_fields__.keys() - {"profile_id", "source"}:
+            require(isinstance(value[key], str) and SHA256.fullmatch(value[key]), f"invalid worker evidence {key}")
+        return cls(**value)
+
+
 @dataclass(frozen=True)
 class Run:
     id: str
@@ -53,6 +83,7 @@ class Run:
     request_settings_id: str
     precision: dict
     checkpoint_sha256: str | None = None
+    worker_evidence: WorkerEvidence | None = None
 
     @classmethod
     def parse(cls, data):
@@ -68,7 +99,12 @@ class Run:
         checkpoint = data.get("checkpoint_sha256")
         require(checkpoint is None or isinstance(checkpoint, str) and SHA256.fullmatch(checkpoint),
                 "checkpoint_sha256 must be a lowercase SHA-256 digest")
-        return cls(*(data[field] for field in fields), dict(precision), checkpoint)
+        evidence = WorkerEvidence.parse(data.get("worker_evidence"))
+        if evidence is not None:
+            source = "target" if evidence.source == "worker" else "fixture"
+            require(source == data["source"] and evidence.profile_id == data["environment_id"],
+                    "worker evidence source or profile does not match the run")
+        return cls(*(data[field] for field in fields), dict(precision), checkpoint, evidence)
 
     def differences(self, other):
         return [key for key in ("source", "model_revision", "environment_id", "request_settings_id")
@@ -124,6 +160,16 @@ class Sample:
     speaker_id: str | None = None
 
 
+def scoring_sha256(samples, side):
+    rows = []
+    for sample in sorted(samples, key=lambda row: row.id):
+        output = getattr(sample, side)
+        score_fields = (None if output is None else
+                        [output.text, output.finish_reason, output.generated_count])
+        rows.append([sample.id, sample.reference, sample.language, sample.audio_sha256, sample.speaker_id, score_fields])
+    return document_sha256(rows)
+
+
 @dataclass(frozen=True)
 class Comparison:
     model: str
@@ -161,4 +207,11 @@ class Comparison:
         fingerprints = tuple(data.get(key) for key in ("evaluation_dataset_sha256", "request_document_sha256"))
         require(all(value is None or isinstance(value, str) and SHA256.fullmatch(value) for value in fingerprints),
                 "dataset and request fingerprints must be lowercase SHA-256 digests")
+        for side, run in (("baseline", baseline), ("candidate", candidate)):
+            evidence = run.worker_evidence
+            if evidence is not None:
+                require((evidence.evaluation_dataset_sha256, evidence.request_document_sha256) == fingerprints,
+                        f"{side}: worker evidence dataset or request fingerprint differs")
+                require(evidence.scoring_sha256 == scoring_sha256(samples, side),
+                        f"{side}: worker evidence does not match the normalized scoring rows")
         return cls(data["model"], baseline, candidate, samples, *fingerprints)

@@ -4,8 +4,8 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from random import Random
 
-from .audio_evidence import audio_inputs_agree
-from .diagnostics import classify, edit_distance, tokens
+from .audio_evidence import audio_inputs_agree, sample_evidence
+from .diagnostics import classify, diagnose, edit_distance, tokens
 from .model import require
 from .performance import compare_performance
 
@@ -154,7 +154,8 @@ def compare_candidates(comparisons, reference_run_id=None, *, costs=None):
     outcomes = [Counter() for _ in comparisons]
     samples = []
     for row in sorted(first.samples, key=lambda item: item.id):
-        candidates = [index[row.id].candidate for index in indices]
+        pairs = [index[row.id] for index in indices]
+        candidates = [pair.candidate for pair in pairs]
         states = [classify(output) for output in candidates]
         for counts, state in zip(outcomes, states, strict=True):
             counts["missing" if state == "missing" else "failed" if state == "failed"
@@ -168,18 +169,31 @@ def compare_candidates(comparisons, reference_run_id=None, *, costs=None):
             eligible[metric] += 1
             if row.speaker_id is not None:
                 speaker_metrics.add(metric)
+        baseline_edits = edit_distance(reference, tokens(row.baseline.text, row.language)) if common else None
+        scores = {}
+        for comparison, pair, state in zip(comparisons, pairs, states, strict=True):
+            output = pair.candidate
+            scores[comparison.candidate.id] = {
+                "status": state, "text": output.text if output else None,
+                "finding": asdict(diagnose(comparison, pair)),
+                "edits": edit_distance(reference, tokens(output.text, row.language)) if common else None,
+                "finish_reason": output.finish_reason if output else None,
+                "generated_count": output.generated_count if output else None,
+                "first_token_id": output.first_token_id if output else None,
+                **sample_evidence(pair.baseline, output, expected=pair.audio_sha256),
+            }
         if common:
-            baseline = edit_distance(reference, tokens(row.baseline.text, row.language))
-            deltas = [edit_distance(reference, tokens(output.text, row.language)) - baseline for output in candidates]
-            contributions[metric].append(ScoredSample(len(reference), baseline, deltas, row.speaker_id))
+            deltas = [score["edits"] - baseline_edits for score in scores.values()]
+            contributions[metric].append(ScoredSample(len(reference), baseline_edits, deltas, row.speaker_id))
         samples.append({
             "id": row.id, "reference": row.reference, "common_scoring": common,
             "speaker_id": row.speaker_id,
             "input_mismatch": not input_match,
             "baseline_text": row.baseline.text if row.baseline else None,
             "baseline_status": classify(row.baseline),
-            "candidates": {run_id: {"status": state, "text": output.text if output else None}
-                           for run_id, state, output in zip(candidate_ids, states, candidates, strict=True)},
+            "baseline_edits": baseline_edits, "reference_units": len(reference) if common else None,
+            "metric": metric,
+            "candidates": scores,
         })
     report = {
         "schema_version": 1, "kind": "candidate_comparison", "model": first.model,

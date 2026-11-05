@@ -65,6 +65,17 @@ class AcceptanceTests(unittest.TestCase):
         self.assertEqual(check["status"], "insufficient")
         self.assertEqual(result["status"], "insufficient_evidence")
 
+    def test_target_results_require_locally_linked_infer_artifacts(self):
+        self.costs["source"] = "target"
+        for run in self.runs:
+            for side in ("baseline", "candidate"):
+                run[side]["source"] = "target"
+        result = self.evaluate()["candidates"][0]
+        self.assertEqual(result["status"], "insufficient_evidence")
+        worker = next(check for check in result["checks"] if check["code"] == "worker_evidence")
+        self.assertEqual(worker["observed"], 0)
+        self.assertEqual(worker["status"], "insufficient")
+
     def test_rejects_different_measurement_protocol_or_reference(self):
         with self.assertRaisesRegex(ValueError, "FP16 baseline as reference"):
             self.evaluate(reference=self.runs[0]["candidate"]["id"])

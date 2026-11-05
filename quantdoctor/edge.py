@@ -64,4 +64,8 @@ def import_edge(manifest, baseline, candidate, *, baseline_trace=None, candidate
         for side, evidence in (("baseline", left), ("candidate", right)):
             if evidence is not None:
                 _attach_evidence(rows, side, manifest, evidence, field)
-    return {**manifest, "samples": rows}
+    bundle = {**manifest, "samples": rows}
+    for side in ("baseline", "candidate"):
+        if isinstance(bundle.get(side), dict):
+            bundle[side] = {key: value for key, value in bundle[side].items() if key != "worker_evidence"}
+    return bundle

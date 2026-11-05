@@ -28,3 +28,28 @@ python3 -m quantdoctor job-next export.json export-result.json export-outputs \
 ```
 
 支持 PTQ/QAT → Export → Build → Infer 或 Profile。命令校验上游工单 ID、成功状态、所有输出摘要、下游输入角色与复制过来的产物。Engine 从 Build 转交 Infer 或 Profile 时要求使用相同 profile ID。要试跑合成文件链，可显式传 `--allow-fixture`。实验 provenance 以原始结果文件为准，保留每个上游工单和结果供复核。下游工单本身描述输入内容和执行配置。
+
+## 从 Infer 工单导入评分
+
+为基线和每个候选分别准备一个成功返回的 Infer 工单目录。两个工单使用同一评测请求，并通过不同工单 ID 区分。
+
+```text
+candidate/
+  job.json
+  result.json
+  inputs/
+    engine_bundle/
+    requests
+  outputs/
+    responses
+```
+
+`inputs/requests` 保留实际交给 Infer Worker 的 JSON 文件，`outputs/responses` 使用 `llm_inference` 原始输出。评测清单和原始请求可用 `prepare-eval` 生成。清单的运行 `environment_id` 与工单 `profile_id` 一致，`source` 使用 `target` 对应 `worker` 回传、`fixture` 对应模拟回传。
+
+```sh
+python3 -m quantdoctor import-worker-edge eval/manifest.json fp16/ nvfp4/ -o nvfp4-comparison.json
+```
+
+导入时复核 engine、请求和响应的文件摘要、规范化请求摘要及完整的请求索引。规范化结果的每个 run 持有 `worker_evidence`，其中 `scoring_sha256` 覆盖样本 ID、参考、语言、预期音频摘要、说话人及该 run 的最终文本、停止原因、生成数。手工改变这些评分字段后需重新从原始工件导入。也可使用 `import-edge` 的音频和解码 sidecar 参数，附加采集独立关联。多候选页面的「运行产物」可展开查看摘要。
+
+此记录用于本地复核，工单及摘要没有签名。评测清单及附加 sidecar 仍由实验提供方维护。板端实际加载的 engine、音频文件、内核和有效精度需另用目标日志和测量记录核实。
