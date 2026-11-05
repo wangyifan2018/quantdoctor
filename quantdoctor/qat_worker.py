@@ -11,8 +11,8 @@ import subprocess
 import sys
 from tempfile import TemporaryDirectory
 
-from .model import load_json, require
-from .qat import EDGE_COMMIT, QATRecipe, file_sha256, read_examples, require_disjoint
+from .model import file_sha256, load_json, require
+from .qat import EDGE_COMMIT, QATRecipe, read_examples, require_disjoint
 
 
 def _check_worker(edge_repo):

@@ -1,8 +1,13 @@
 """Versioned evidence exchanged between the CLI, Web workbench and workers."""
 
 from dataclasses import dataclass
+from hashlib import file_digest
 import json
 from pathlib import Path
+import re
+
+
+SHA256 = re.compile(r"[a-f0-9]{64}")
 
 
 def load_json(path: Path):
@@ -21,6 +26,11 @@ def nonempty(value):
 
 def valid_ids(value):
     return isinstance(value, list) and all(type(token) is int and token >= 0 for token in value)
+
+
+def file_sha256(path):
+    with path.open("rb") as stream:
+        return file_digest(stream, "sha256").hexdigest()
 
 
 @dataclass(frozen=True)
@@ -89,6 +99,8 @@ class Comparison:
     baseline: Run
     candidate: Run
     samples: list[Sample]
+    evaluation_dataset_sha256: str | None = None
+    request_document_sha256: str | None = None
 
     @classmethod
     def parse(cls, data):
@@ -111,4 +123,7 @@ class Comparison:
             require(language in (None, "zh", "en"), "language must be en or zh")
             samples.append(Sample(row["id"], Output.parse(row.get("baseline")),
                                   Output.parse(row.get("candidate")), reference, language))
-        return cls(data["model"], baseline, candidate, samples)
+        fingerprints = tuple(data.get(key) for key in ("evaluation_dataset_sha256", "request_document_sha256"))
+        require(all(value is None or isinstance(value, str) and SHA256.fullmatch(value) for value in fingerprints),
+                "dataset and request fingerprints must be lowercase SHA-256 digests")
+        return cls(data["model"], baseline, candidate, samples, *fingerprints)

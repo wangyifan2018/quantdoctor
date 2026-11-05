@@ -6,11 +6,10 @@ from enum import Enum
 from hashlib import sha256
 import json
 from pathlib import Path
-import re
 from types import MappingProxyType
 from typing import Protocol
 
-from .model import nonempty, require
+from .model import SHA256, nonempty, require
 
 
 class Stage(str, Enum):
@@ -40,7 +39,6 @@ ARTIFACTS = {
     Stage.INFER: StageArtifacts(frozenset({"engine_bundle", "requests"}), frozenset({"responses"})),
     Stage.PROFILE: StageArtifacts(frozenset({"engine_bundle", "requests", "profile_config"}), frozenset({"profile"})),
 }
-SHA256 = re.compile(r"[a-f0-9]{64}")
 
 
 def _document(data, keys):

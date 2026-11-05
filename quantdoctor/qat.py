@@ -1,17 +1,15 @@
 """Platform-independent contract for a selective Qwen3-ASR QAT job."""
 
 from dataclasses import dataclass
-from hashlib import file_digest
 import math
 from pathlib import Path
 import re
 
 from .diagnostics import ASR_MODEL
-from .model import load_json, nonempty, require, valid_ids
+from .model import SHA256, file_sha256, load_json, nonempty, require, valid_ids
 
 EDGE_COMMIT = "1231d6415ce38d0b2f20b3308ac24e58ec4100a8"
 MODULE = re.compile(r"model\.layers\.([0-9]+)\.(?:mlp\.(?:gate|up|down)_proj|self_attn\.(?:q|k|v|o)_proj)")
-SHA256 = re.compile(r"[a-f0-9]{64}")
 
 
 @dataclass(frozen=True)
@@ -61,11 +59,6 @@ class TrainingExample:
 
     def teacher_forcing_ids(self):
         return self.prompt_ids + self.target_ids[:-1]
-
-
-def file_sha256(path):
-    with path.open("rb") as stream:
-        return file_digest(stream, "sha256").hexdigest()
 
 
 def read_examples(path, limit, audio_token_id, vocab_size):

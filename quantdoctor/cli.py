@@ -2,14 +2,16 @@
 
 import argparse
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import subprocess
 import sys
+from tempfile import TemporaryDirectory
 
 from .contracts import WorkerJob, WorkerResult
+from .datasets import load_asr_dataset, prepare_evaluation
 from .diagnostics import report, work_order
 from .edge import import_edge
-from .model import Comparison, load_json
+from .model import Comparison, load_json, require
 from .qat import QATRecipe, template
 
 
@@ -25,6 +27,13 @@ def emit(document, output=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="quantdoctor")
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("dataset-validate", help="Check a local ASR dataset and fingerprint each split").add_argument(
+        "dataset", type=Path)
+    evaluation = commands.add_parser("prepare-eval", help="Export Edge ASR requests and scoring manifest")
+    evaluation.add_argument("dataset", type=Path)
+    evaluation.add_argument("comparison_metadata", type=Path)
+    evaluation.add_argument("--audio-root", type=PurePosixPath, help="Dataset root as seen on the target")
+    evaluation.add_argument("--output", type=Path, required=True)
     importer = commands.add_parser("import-edge", help="Pair two llm_inference result files")
     for name in ("manifest", "baseline", "candidate"):
         importer.add_argument(name, type=Path)
@@ -53,7 +62,21 @@ def main(argv=None):
         worker.add_argument(f"--{flag}", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
-        if args.command == "import-edge":
+        if args.command == "dataset-validate":
+            emit(load_asr_dataset(args.dataset).summary())
+        elif args.command == "prepare-eval":
+            dataset = load_asr_dataset(args.dataset)
+            request, scoring = prepare_evaluation(dataset, load_json(args.comparison_metadata), args.audio_root)
+            output = args.output.absolute()
+            require(not output.exists(), "evaluation destination already exists")
+            with TemporaryDirectory(dir=output.parent) as temporary:
+                stage = Path(temporary) / "evaluation"
+                stage.mkdir()
+                emit(request, stage / "input.json")
+                emit(scoring, stage / "manifest.json")
+                stage.rename(output)
+            print(output)
+        elif args.command == "import-edge":
             bundle = import_edge(*(load_json(path) for path in (args.manifest, args.baseline, args.candidate)))
             Comparison.parse(bundle)
             emit(bundle, args.output)

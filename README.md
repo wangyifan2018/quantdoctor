@@ -30,6 +30,10 @@ python3 -m quantdoctor serve comparison.json
 
 `manifest.json` 顶层字段与 [演示对照](examples/demo-comparison.json) 一致，`samples` 改为 `id`、`request_idx`、可选的 `reference` 和 `language`（`en` / `zh`）。两个运行必须使用同一请求清单和索引。生产记录建议以稳定哈希填写 `environment_id` 和 `request_settings_id`，分别覆盖设备/软件与请求/预处理/解码设置。使用 `target` 标识真实板端结果，精度字段录入已审计的有效值，缺证据时填 `unknown`。如需比对 token 或清理前文本，可在规范化对照中附上 `first_token_id`、`stop_token_ids`、`raw_text`。常规 Edge CLI 产物只使用实际存在的字段。
 
+## 自定义校准与评测数据
+
+用 `dataset-validate` 校验本地音频清单、检测校准与评测之间的相同音频文件，并生成 split 摘要。用 `prepare-eval` 生成 Edge-LLM 请求和独立评分清单。校准 split 可通过 `calibration_source` 传给 Edge-LLM Python API。完整示例见 [自定义数据集](docs/DATASETS.md)。
+
 ## 选择性 QAT
 
 本机生成并校验配方。

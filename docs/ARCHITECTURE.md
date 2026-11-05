@@ -9,6 +9,7 @@
 | 模块 | 职责 | 当前状态 |
 |---|---|---|
 | Run Model 与导入 | 记录运行来源、有效精度与比较条件，按样本 ID 配对，保留缺失和失败。 | 已实现对照合同和 Edge-LLM JSON 导入。真实报告接入待做。 |
+| ASR 数据清单 | 分离校准与评测，记录有序音频内容摘要并准备请求。 | 已实现本地校验、校准 callable 和评测 bundle。设备执行待验证。 |
 | ASR Evaluator 与分诊 | 计算配对 CER/WER、空转写，区分 EOS、清理异常、失败和缺证据。 | 已实现基础规则。逐样本 token 分差、阶段差异与置信区间待做。 |
 | Planner 与 Web | 展示证据、提出单变量改变、导出工单。规划逐组干预后再细化到层。 | 已实现本地样本视图、工单和 JSON。工单回传对照、因果证据图及候选排序待做。 |
 | Model Inspector | 从 HF config 与 safetensors 头部解析结构、shape、dtype、ties 和参数体积，建立 HF、校准、checkpoint 与 Edge 导出的 FQN 映射。 | 可在 Mac 用公开模型元数据和小型 fixture 实现。精度映射的板端回查待做。 |

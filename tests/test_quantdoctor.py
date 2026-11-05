@@ -5,8 +5,8 @@ import unittest
 
 from quantdoctor.diagnostics import report, work_order
 from quantdoctor.edge import import_edge
-from quantdoctor.model import Comparison, load_json
-from quantdoctor.qat import QATRecipe, file_sha256, read_examples, require_disjoint, template
+from quantdoctor.model import Comparison, file_sha256, load_json
+from quantdoctor.qat import QATRecipe, read_examples, require_disjoint, template
 
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "demo-comparison.json"
 

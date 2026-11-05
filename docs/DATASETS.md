@@ -1,0 +1,77 @@
+# 自定义 Qwen3-ASR 校准集与评测集
+
+## Edge-LLM 的默认行为
+
+本项目对应的 Edge-LLM checkout 为 `1231d6415ce38d0b2f20b3308ac24e58ec4100a8`。Qwen3-ASR 的 PTQ 默认选择 `librispeech`，从 Hugging Face `openslr/librispeech_asr` 流式读取 `clean/train.100` 的音频与转写。即便只做 LLM NVFP4、Audio 保持 FP16，也会走联合音频校准。当前分支最多接受 `min(num_samples,128)` 条，过滤非 16 kHz、超过 20 秒、无转写、无法解码或不符合音频占位契约的样本。 [默认数据源](https://github.com/NVIDIA/TensorRT-Edge-LLM/blob/1231d6415ce38d0b2f20b3308ac24e58ec4100a8/tensorrt_edgellm/quantization/datasets/builtin.py#L105) · [ASR 联合校准](https://github.com/NVIDIA/TensorRT-Edge-LLM/blob/1231d6415ce38d0b2f20b3308ac24e58ec4100a8/tensorrt_edgellm/quantization/quantize.py#L1185)
+
+有三个定制入口：
+
+- Python API 的 `audio_dataset` 接受一个无参 generator callable，逐条返回 `(audio_bytes, transcript)`。QuantDoctor 使用这个入口，读取本地文件。
+- CLI 的 `--audio_dataset NAME` 选择已注册的名称。可以在同一个 Python 进程注册自己的生成器，再调用 CLI 入口，或通过 Python API 直接传 callable。官方 v0.11.1 统一 CLI 对应参数拼写为 `--audio-dataset`。
+- `EDGELLM_QUANT_DATASET_LIBRISPEECH` 可将内置数据源指向本地 JSON/JSONL 或兼容的 Hugging Face Dataset 目录。仍需符合内置 loader 的 `audio` 与 `text` 字段契约。QuantDoctor 的 split 清单使用自己的格式，经 callable 交给 Edge-LLM。
+
+[NVIDIA 校准集定制指南](https://nvidia.github.io/TensorRT-Edge-LLM/0.11.1/developer_guide/customization/calibration-datasets.html)
+
+## 本地清单
+
+在同一个 `dataset.json` 中标出角色。路径相对于清单所在目录。将音频放在该目录下，例如 `audio/`。
+
+```json
+{
+  "schema_version": 1,
+  "samples": [
+    {"id": "cal-001", "split": "calibration", "audio": "audio/cal-001.wav", "text": "Open the window.", "language": "en"},
+    {"id": "eval-001", "split": "evaluation", "audio": "audio/eval-001.wav", "text": "打开右侧车窗。", "language": "zh"}
+  ]
+}
+```
+
+`dataset-validate` 检查文件、唯一 ID 和跨 split 的相同音频文件内容，计算每个 split 的 SHA-256。摘要包含有序样本 ID、音频文件内容摘要、转写和语言，所以换存放路径不改变数据集身份，换样本顺序会改变身份。它能查出改名后的相同文件。重新编码的同源录音以及同说话人泄漏需要在准备清单时控制。也可用单 split 清单，跨 split 检查要求将两套样本放在同一个清单。
+
+校准接受 PCM WAV 和 FLAC。WAV 的采样率和时长在本机检查，FLAC 的采样率、时长与实际解码由设备侧校准 loader 确认。评测请求接受 WAV、FLAC、MP3。设备推理前仍须确认实际音频文件、音频 profile 及最大输入长度。
+
+```sh
+python3 -m quantdoctor dataset-validate /data/asr/dataset.json
+```
+
+## 自定义校准
+
+先在 Mac 上用合并清单检查校准与评测交集。可以将完整清单和引用的文件复制到 CUDA Worker，也可以仅复制校准行和对应音频，保留校准行顺序与相对路径。在安装了兼容 Edge-LLM 与 QuantDoctor 的环境执行：
+
+```python
+from quantdoctor.datasets import calibration_source
+from tensorrt_edgellm.quantization import quantize_and_export
+
+source = calibration_source("/data/asr/dataset.json")
+quantize_and_export(
+    model_dir="/data/models/Qwen3-ASR-0.6B",
+    output_dir="/data/runs/qwen3-asr-nvfp4-custom-cal",
+    quantization="nvfp4",
+    audio_dataset=source,
+    num_samples=128,
+)
+```
+
+`source.calib_name` 包含校准集摘要，便于和 Edge-LLM 日志核对。实际接收样本数以校准日志为准。本地校验和 generator 已通过 fixture 测试，尚未在 CUDA Worker 执行 PTQ。QAT 仍使用带 token IDs 的独立训练合同。
+
+**中文校准的版本限制**。当前 ASR loader 把 `language English` 写在校准转写前面。传入中文数据会改变音频与转写分布，但保留英语前缀。QuantDoctor 会提示这项差异。需要按样本语言设置前缀时，后续通过独立校准 forward-loop 适配器接入并做设备验证。中文评测可直接使用独立评测 split。 [当前校准 prompt](https://github.com/NVIDIA/TensorRT-Edge-LLM/blob/1231d6415ce38d0b2f20b3308ac24e58ec4100a8/tensorrt_edgellm/quantization/qwen3_asr_loader.py#L154)
+
+## 自定义评测
+
+准备 `comparison-metadata.json`。格式参考 [演示对照](../examples/demo-comparison.json) 的 `schema_version`、`model`、`baseline`、`candidate`。填写两次运行的模型 revision、有效精度、设备环境与解码设置，真实设备结果使用 `source: "target"`。评分清单中的 `samples` 由工具生成。
+
+```sh
+python3 -m quantdoctor prepare-eval /data/asr/dataset.json comparison-metadata.json \
+  --audio-root /target/data/asr --output eval-bundle
+```
+
+输出包括 `input.json` 和 `manifest.json`。前者仅包含评测音频请求，使用 batch 1、greedy top-k 1。后者含 `request_idx` 与参考转写，以及评测集和规范化请求 JSON 的摘要。 `--audio-root` 指向目标板上与清单目录具有相同子目录结构的位置，文件需另行同步，音频内容需与校验时一致。省略时使用本机路径。两组推理都用同一 `input.json`，避免命令行覆盖解码参数。生成请求格式对应本地 checkout 的 `llm_inference`。 [NVIDIA ASR 推理输入](https://nvidia.github.io/TensorRT-Edge-LLM/0.11.0/user_guide/examples/asr.html)
+
+回传两份 `--outputFile` 结果后，导入 QuantDoctor：
+
+```sh
+python3 -m quantdoctor import-edge eval-bundle/manifest.json fp16-output.json nvfp4-output.json -o comparison.json
+python3 -m quantdoctor serve comparison.json
+```
+
+对比校准数据效果时，固定模型、量化配置和设备，只把候选的校准集从默认 LibriSpeech 换成自定义集。将这两份结果在同一独立评测集上与 FP16 基线配对，优先查看之前的空转写样本和整体 CER/WER。评测集和请求摘要保留在 QuantDoctor 报告及修复工单中。

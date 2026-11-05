@@ -97,6 +97,8 @@ def work_order(comparison: Comparison, sample_id: str):
         "status": "pending_verification",
         "model": comparison.model,
         "sample_id": sample.id,
+        "evaluation_dataset_sha256": comparison.evaluation_dataset_sha256,
+        "request_document_sha256": comparison.request_document_sha256,
         "baseline": asdict(comparison.baseline),
         "candidate": asdict(comparison.candidate),
         "finding": asdict(finding),
@@ -155,6 +157,8 @@ def report(comparison: Comparison):
         outcomes[side] = {"empty": empty, "completed": completed, "missing": missing, "failed": failed}
     return {
         "model": comparison.model,
+        "evaluation_dataset_sha256": comparison.evaluation_dataset_sha256,
+        "request_document_sha256": comparison.request_document_sha256,
         "baseline": asdict(comparison.baseline),
         "candidate": asdict(comparison.candidate),
         "samples": [
