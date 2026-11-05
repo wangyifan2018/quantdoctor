@@ -150,7 +150,83 @@ function showDecodeEvidence(original, repaired = []) {
   render();
 }
 
+function showCheckpoint(data) {
+  const audit = data.kind === "checkpoint_audit";
+  text("source", data.payload_hashed ? "本地张量内容已读取" : "本地 checkpoint 头部");
+  document.querySelector("h1").textContent = audit ? "模型产物差异审计" : "模型权重检查";
+  text("model", (data.model_type ?? "未声明 model_type") + " · 声明量化 "
+    + (data.declared_quantization ?? "未声明") + " · 权重绑定 "
+    + (data.tied_word_embeddings == null ? "未声明" : data.tied_word_embeddings ? "开启" : "关闭"));
+  const changed = (data.changed_components ?? []).join("、") || "无";
+  text("checkpoint-status", audit
+    ? "有张量变化的组件：" + changed + (data.tie_declaration_changed ? " · 权重绑定声明变化" : "")
+      + (data.expected_component ? " · 仅 " + data.expected_component + " 发生变化：" + (data.matches_expectation ? "符合" : "不符合") : "")
+    : "下方为 checkpoint 中实际存储的 dtype 与字节数。运行时精度需核对部署证据。");
+  const names = [...new Set([...Object.keys(data.original_components ?? {}), ...Object.keys(data.components)])];
+  const maxBytes = Math.max(1, ...names.flatMap(name => [
+    data.original_components?.[name]?.bytes ?? 0, data.components[name]?.bytes ?? 0,
+  ]));
+  const formatSize = value => value >= 1048576 ? (value / 1048576).toFixed(1) + " MiB" : value + " B";
+  for (const name of names) {
+    const group = document.createElement("section");
+    group.className = "checkpoint-group";
+    const heading = document.createElement("h3");
+    heading.textContent = name;
+    group.append(heading);
+    if (audit) {
+      const original = document.createElement("p");
+      original.className = "muted";
+      original.textContent = "原始 " + formatSize(data.original_components[name]?.bytes ?? 0);
+      group.append(original);
+    }
+    const component = data.components[name];
+    const size = document.createElement("p");
+    size.textContent = formatSize(component?.bytes ?? 0) + " · " + (component?.scale_count ?? 0) + " 个 scale";
+    const meter = document.createElement("meter");
+    meter.min = 0;
+    meter.max = maxBytes;
+    meter.value = component?.bytes ?? 0;
+    meter.setAttribute("aria-label", name + " 的存储字节数");
+    const breakdown = document.createElement("p");
+    breakdown.className = "muted";
+    breakdown.textContent = Object.entries(component?.dtype_bytes ?? {}).map(([dtype, bytes]) =>
+      dtype + " " + formatSize(bytes)).join(" · ");
+    group.append(size, meter, breakdown);
+    byId("component-plot").append(group);
+  }
+  const picker = byId("component-picker");
+  picker.add(new Option("全部组件", ""));
+  for (const name of names) picker.add(new Option(name, name));
+  text("tensor-heading", audit ? "实际变更张量" : "张量清单");
+  const records = audit ? data.changed_tensors : data.tensors;
+  const describe = row => row ? row.dtype + " [" + row.shape.join(", ") + "]" : "缺失";
+  function render() {
+    const rows = records.filter(row => !picker.value || row.component === picker.value);
+    const items = byId("tensors");
+    items.replaceChildren();
+    text("tensor-count", rows.length > 100 ? "共 " + rows.length + " 条，显示前 100 条。完整结果可通过 CLI 导出。"
+      : rows.length + " 条记录");
+    for (const row of rows.slice(0, 100)) {
+      const line = document.createElement("div");
+      line.className = "tensor-row";
+      const name = document.createElement("code");
+      name.textContent = row.name;
+      const info = document.createElement("span");
+      info.textContent = audit ? describe(row.original) + " → " + describe(row.candidate) : describe(row);
+      line.append(name, info);
+      items.append(line);
+    }
+  }
+  picker.addEventListener("change", render);
+  render();
+  byId("checkpoint").hidden = false;
+}
+
 function setup(data) {
+  if (data.kind === "checkpoint" || data.kind === "checkpoint_audit") {
+    showCheckpoint(data);
+    return;
+  }
   const { baseline, candidate, replay } = data;
   const replayRows = new Map(Object.entries(replay?.samples ?? {}));
   text("source", baseline.source === candidate.source

@@ -7,6 +7,7 @@ import subprocess
 import sys
 from tempfile import TemporaryDirectory
 
+from .checkpoint import audit_checkpoints, inspect_checkpoint
 from .contracts import WorkerJob, WorkerResult
 from .datasets import load_asr_dataset, prepare_evaluation
 from .diagnostics import report, work_order
@@ -28,6 +29,17 @@ def emit(document, output=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="quantdoctor")
     commands = parser.add_subparsers(dest="command", required=True)
+    inspect = commands.add_parser("inspect", help="Inspect a local HF safetensors checkpoint")
+    inspect.add_argument("snapshot", type=Path)
+    inspect.add_argument("--hash-weights", action="store_true")
+    audit = commands.add_parser("audit-checkpoints", help="Compare the actual tensor payload of two checkpoints")
+    audit.add_argument("original", type=Path)
+    audit.add_argument("candidate", type=Path)
+    audit.add_argument("--expect-component", choices=("audio", "backbone", "head", "other"))
+    for command in (inspect, audit):
+        destination = command.add_mutually_exclusive_group()
+        destination.add_argument("-o", "--output", type=Path)
+        destination.add_argument("--port", type=int, help="Open a loopback inspection workbench")
     commands.add_parser("dataset-validate", help="Check a local ASR dataset and fingerprint each split").add_argument(
         "dataset", type=Path)
     evaluation = commands.add_parser("prepare-eval", help="Export Edge ASR requests and scoring manifest")
@@ -74,7 +86,17 @@ def main(argv=None):
         worker.add_argument(f"--{flag}", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
-        if args.command == "dataset-validate":
+        if args.command in {"inspect", "audit-checkpoints"}:
+            if args.command == "inspect":
+                data = inspect_checkpoint(args.snapshot, hash_weights=args.hash_weights)
+            else:
+                data = audit_checkpoints(args.original, args.candidate, args.expect_component)
+            if args.port is None:
+                emit(data, args.output)
+            else:
+                from .server import serve
+                serve(data, args.port)
+        elif args.command == "dataset-validate":
             emit(load_asr_dataset(args.dataset).summary())
         elif args.command == "prepare-eval":
             dataset = load_asr_dataset(args.dataset)

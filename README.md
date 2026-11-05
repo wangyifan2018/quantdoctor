@@ -40,6 +40,8 @@ python3 -m quantdoctor serve comparison.json
 
 有逐步解码记录时，工作台展示实际选择、Top-1 和可比的 EOS 分差。见 [解码证据导入合同](docs/DECODE_EVIDENCE.md)。
 
+已有本地 HF 权重时，可在 Mac 上用 `inspect` 查看组件体积、存储 dtype 和 scale，用 `audit-checkpoints` 检查修复前后的实际张量变化。见 [模型产物检查](docs/CHECKPOINT.md)。
+
 ## 选择性 QAT
 
 本机生成并校验配方。

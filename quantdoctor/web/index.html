@@ -13,6 +13,16 @@
     <h1>ASR 空转写诊断</h1>
     <p id="model" class="muted"></p>
     <p id="error" role="alert" hidden></p>
+    <section id="checkpoint" hidden>
+      <p id="checkpoint-status"></p>
+      <div id="component-plot" class="checkpoint-groups"></div>
+      <section class="replay-overview">
+        <div class="replay-heading"><h2 id="tensor-heading"></h2>
+          <label>组件 <select id="component-picker"></select></label></div>
+        <p id="tensor-count" class="muted"></p>
+        <div id="tensors"></div>
+      </section>
+    </section>
     <div id="workbench" hidden>
       <section id="metrics" aria-label="配对指标"></section>
       <section id="replay-overview" class="replay-overview" hidden>
