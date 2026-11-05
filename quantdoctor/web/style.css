@@ -31,6 +31,12 @@ button, select { font: inherit; color: inherit; background: var(--surface); bord
 #samples button { text-align: left; overflow-wrap: anywhere; cursor: pointer; }
 #samples button[aria-pressed="true"] { background: var(--active); border-color: var(--accent); }
 .pair { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.pair.with-repair { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.replay-overview { padding: 14px; margin: 0 0 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.replay-heading { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.replay-counts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }
+.replay-counts span { padding: 3px 7px; background: var(--active); border-radius: 5px; font-variant-numeric: tabular-nums; }
+.transition { margin-top: 10px; color: var(--accent); }
 .pair section, .finding, details { padding: 12px; border-radius: 8px; background: var(--page); border: 1px solid var(--line); }
 .finding, details { margin-top: 10px; }
 pre { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
@@ -38,4 +44,5 @@ summary { cursor: pointer; color: var(--accent); }
 details p { margin-top: 8px; }
 [hidden] { display: none !important; }
 @media (max-width: 700px) { .workspace { grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 530px) { .pair.with-repair { grid-template-columns: minmax(0,1fr); } }
 @media (max-width: 430px) { .pair { grid-template-columns: minmax(0,1fr); } main { padding-inline: 12px; } }

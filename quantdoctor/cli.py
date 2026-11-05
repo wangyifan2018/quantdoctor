@@ -13,6 +13,7 @@ from .diagnostics import report, work_order
 from .edge import import_edge
 from .model import Comparison, load_json, require
 from .qat import QATRecipe, template
+from .replay import verify_repair
 
 
 def emit(document, output=None):
@@ -42,11 +43,20 @@ def main(argv=None):
     planner.add_argument("comparison", type=Path)
     planner.add_argument("sample_id")
     planner.add_argument("-o", "--output", type=Path)
+    replay = commands.add_parser("replay", help="Compare a single-variable repair with its original run")
+    replay.add_argument("comparison", type=Path)
+    replay.add_argument("retest", type=Path)
+    replay.add_argument("sample_id")
+    replay.add_argument("--costs", type=Path)
+    replay.add_argument("-o", "--output", type=Path)
     for name in ("report", "serve"):
         command = commands.add_parser(name)
         command.add_argument("comparison", type=Path)
         if name == "serve":
             command.add_argument("--port", type=int, default=8765)
+            command.add_argument("--retest", type=Path)
+            command.add_argument("--sample-id")
+            command.add_argument("--costs", type=Path)
         else:
             command.add_argument("-o", "--output", type=Path)
 
@@ -83,10 +93,23 @@ def main(argv=None):
         elif args.command == "plan":
             comparison = Comparison.parse(load_json(args.comparison))
             emit(work_order(comparison, args.sample_id), args.output)
+        elif args.command == "replay":
+            before = Comparison.parse(load_json(args.comparison))
+            after = Comparison.parse(load_json(args.retest))
+            emit(verify_repair(before, after, args.sample_id, load_json(args.costs) if args.costs else None),
+                 args.output)
         elif args.command in {"report", "serve"}:
-            data = report(Comparison.parse(load_json(args.comparison)))
+            before = Comparison.parse(load_json(args.comparison))
+            data = report(before)
             if args.command == "serve":
                 from .server import serve
+                if args.retest:
+                    require(args.sample_id, "--retest requires --sample-id")
+                    after = Comparison.parse(load_json(args.retest))
+                    data["replay"] = verify_repair(
+                        before, after, args.sample_id, load_json(args.costs) if args.costs else None)
+                else:
+                    require(not (args.sample_id or args.costs), "--sample-id and --costs require --retest")
                 serve(data, args.port)
             else:
                 emit(data, args.output)

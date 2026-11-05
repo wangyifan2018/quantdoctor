@@ -15,22 +15,35 @@
     <p id="error" role="alert" hidden></p>
     <div id="workbench" hidden>
       <section id="metrics" aria-label="配对指标"></section>
+      <section id="replay-overview" class="replay-overview" hidden>
+        <div class="replay-heading">
+          <h2>单变量修复复验</h2>
+          <span class="muted">依据导入的运行记录 · 部署待验收</span>
+        </div>
+        <p id="replay-change"></p>
+        <div id="replay-counts" class="replay-counts" aria-label="样本结果变化"></div>
+        <div id="replay-metrics" class="muted"></div>
+        <div id="replay-costs" class="muted"></div>
+      </section>
       <div class="workspace">
         <aside>
           <label for="sample-filter">样本筛选</label>
           <select id="sample-filter">
             <option value="all">全部样本</option>
             <option value="issues">仅异常</option>
+            <option value="replay" id="replay-filter" hidden>复验有变化或缺结果</option>
           </select>
           <div id="samples" aria-label="样本列表"></div>
         </aside>
         <article id="detail" aria-live="polite">
           <h2 id="sample-id"></h2>
           <p id="reference" class="muted"></p>
-          <div class="pair">
+          <div class="pair" id="transcripts">
             <section><h3>基线</h3><p id="baseline-precision" class="muted"></p><pre id="baseline-text"></pre><p id="baseline-stop" class="muted"></p></section>
             <section><h3>候选</h3><p id="candidate-precision" class="muted"></p><pre id="candidate-text"></pre><p id="candidate-stop" class="muted"></p></section>
+            <section id="repaired-column" hidden><h3>修复后</h3><p id="repaired-precision" class="muted"></p><pre id="repaired-text"></pre><p id="repaired-stop" class="muted"></p></section>
           </div>
+          <p id="sample-transition" class="transition" hidden></p>
           <section class="finding">
             <h3 id="finding-title"></h3><p id="evidence"></p><p id="attribution" class="muted"></p>
           </section>

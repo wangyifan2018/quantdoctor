@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "model": "Qwen/Qwen3-ASR-0.6B",
+  "baseline": {
+    "id": "fp16-demo",
+    "source": "fixture",
+    "model_revision": "demo-revision",
+    "environment_id": "demo-thor",
+    "request_settings_id": "demo-greedy",
+    "precision": {
+      "backbone": "fp16",
+      "audio": "fp16",
+      "head": "fp16",
+      "kv": "fp16"
+    }
+  },
+  "candidate": {
+    "id": "nvfp4-fp16-audio-demo",
+    "source": "fixture",
+    "model_revision": "demo-revision",
+    "environment_id": "demo-thor",
+    "request_settings_id": "demo-greedy",
+    "precision": {
+      "backbone": "nvfp4",
+      "audio": "fp16",
+      "head": "fp16",
+      "kv": "fp16"
+    }
+  },
+  "samples": [
+    {
+      "id": "ASR-014",
+      "reference": "打开右侧车窗。",
+      "language": "zh",
+      "baseline": {
+        "text": "打开右侧车窗。"
+      },
+      "candidate": {
+        "text": "打开右侧车窗。",
+        "finish_reason": "end-of-sequence",
+        "generated_count": 8
+      }
+    },
+    {
+      "id": "ASR-027",
+      "reference": "关闭空调。",
+      "language": "zh",
+      "baseline": {
+        "text": "关闭空调。"
+      },
+      "candidate": {
+        "text": "",
+        "raw_text": "关闭空调。",
+        "finish_reason": "end-of-sequence"
+      }
+    },
+    {
+      "id": "ASR-039",
+      "reference": "向前行驶。",
+      "language": "zh",
+      "baseline": {
+        "text": "向前行驶。"
+      },
+      "candidate": {
+        "text": "向前。",
+        "finish_reason": "end-of-sequence",
+        "generated_count": 3
+      }
+    },
+    {
+      "id": "ASR-042",
+      "reference": "Turn right.",
+      "language": "en",
+      "baseline": {
+        "text": "Turn right."
+      },
+      "candidate": {
+        "text": "",
+        "finish_reason": "end-of-sequence",
+        "generated_count": 1
+      }
+    },
+    {
+      "id": "ASR-056",
+      "reference": "Turn left.",
+      "language": "en",
+      "baseline": {
+        "text": "Turn left."
+      },
+      "candidate": null
+    }
+  ],
+  "evaluation_dataset_sha256": "3510c36ff3d8d362a01184ad32b68ad588466e022fda5ec79f0763a4d115d5e8",
+  "request_document_sha256": "f179eabf4c005afd92a836d144a0bb01f1d43ef77c72b811044ef794e322b78b"
+}

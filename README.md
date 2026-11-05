@@ -34,6 +34,10 @@ python3 -m quantdoctor serve comparison.json
 
 用 `dataset-validate` 校验本地音频清单、检测校准与评测之间的相同音频文件，并生成 split 摘要。用 `prepare-eval` 生成 Edge-LLM 请求和独立评分清单。校准 split 可通过 `calibration_source` 传给 Edge-LLM Python API。完整示例见 [自定义数据集](docs/DATASETS.md)。
 
+## 修复复验
+
+把同一个 FP16 基线与修复前后两次候选放在一起，可以查看恢复文本、新增空转写、三组共同样本的 CER/WER 和可选性能代价。运行前检查数据、请求和精度变化是否符合原工单。见 [修复复验命令与演示](docs/REPLAY.md)。
+
 ## 选择性 QAT
 
 本机生成并校验配方。

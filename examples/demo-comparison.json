@@ -17,6 +17,8 @@
     "request_settings_id": "demo-greedy",
     "precision": {"backbone": "nvfp4", "audio": "fp8", "head": "fp16", "kv": "fp16"}
   },
+  "evaluation_dataset_sha256": "3510c36ff3d8d362a01184ad32b68ad588466e022fda5ec79f0763a4d115d5e8",
+  "request_document_sha256": "f179eabf4c005afd92a836d144a0bb01f1d43ef77c72b811044ef794e322b78b",
   "samples": [
     {
       "id": "ASR-014",

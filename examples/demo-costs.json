@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "protocol_id": "fixture-protocol",
+  "original": {
+    "run_id": "nvfp4-demo",
+    "rtf_p95": 0.19,
+    "peak_memory_bytes": 1509949440,
+    "artifact_bytes": 576716800
+  },
+  "repaired": {
+    "run_id": "nvfp4-fp16-audio-demo",
+    "rtf_p95": 0.22,
+    "peak_memory_bytes": 1593835520,
+    "artifact_bytes": 660602880
+  }
+}
