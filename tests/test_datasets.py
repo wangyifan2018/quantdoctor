@@ -48,7 +48,10 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(request["requests"][0]["messages"][1]["content"][0]["audio"], "/board/asr/eval.wav")
         self.assertEqual(request["top_k"], 1)
         self.assertNotIn("开门", json.dumps(request, ensure_ascii=False))
-        self.assertEqual(manifest["samples"], [{"id": "e1", "request_idx": 0, "reference": "开门", "language": "zh"}])
+        self.assertEqual(manifest["samples"], [{
+            "id": "e1", "request_idx": 0, "reference": "开门", "language": "zh",
+            "audio_sha256": sha256((self.root / "eval.wav").read_bytes()).hexdigest(),
+        }])
         fp16 = {"responses": [{"request_idx": 0, "output_text": "开门"}]}
         nvfp4 = {"responses": [{"request_idx": 0, "output_text": ""}]}
         result = report(Comparison.parse(import_edge(manifest, fp16, nvfp4)))

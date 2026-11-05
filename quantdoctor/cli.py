@@ -80,6 +80,8 @@ def main(argv=None):
         importer.add_argument(name, type=Path)
     importer.add_argument("--baseline-trace", type=Path)
     importer.add_argument("--candidate-trace", type=Path)
+    importer.add_argument("--baseline-audio", type=Path)
+    importer.add_argument("--candidate-audio", type=Path)
     importer.add_argument("-o", "--output", type=Path)
     planner = commands.add_parser("plan", help="Export a single-variable work order for a sample")
     planner.add_argument("comparison", type=Path)
@@ -167,6 +169,8 @@ def main(argv=None):
                 *(load_json(path) for path in (args.manifest, args.baseline, args.candidate)),
                 baseline_trace=load_json(args.baseline_trace) if args.baseline_trace else None,
                 candidate_trace=load_json(args.candidate_trace) if args.candidate_trace else None,
+                baseline_audio=load_json(args.baseline_audio) if args.baseline_audio else None,
+                candidate_audio=load_json(args.candidate_audio) if args.candidate_audio else None,
             )
             Comparison.parse(bundle)
             emit(bundle, args.output)

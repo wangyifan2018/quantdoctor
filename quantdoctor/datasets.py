@@ -138,7 +138,7 @@ def prepare_evaluation(dataset: ASRDataset, metadata, audio_root: PurePosixPath 
             {"role": "user", "content": [{"type": "audio", "audio": str(root / sample.audio)}]},
         ]})
         index.append({"id": sample.id, "request_idx": offset,
-                      "reference": sample.transcript, "language": sample.language})
+                      "reference": sample.transcript, "language": sample.language, "audio_sha256": sample.sha256})
     request = {"batch_size": 1, "temperature": 1.0, "top_k": 1, "top_p": 1.0,
                "max_generate_length": 256, "requests": requests}
     scoring = {**metadata, "samples": index, "evaluation_dataset_sha256": dataset.digest("evaluation"),

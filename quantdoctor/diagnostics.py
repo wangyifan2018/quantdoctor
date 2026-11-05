@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 import unicodedata
 
 from .model import Comparison, Output, Sample
-from .trace import compare_steps
+from .audio_evidence import audio_inputs_agree, sample_evidence
 
 ASR_MODEL = "Qwen/Qwen3-ASR-0.6B"
 ERRORS = {"error", "cancelled", "not-finished"}
@@ -65,6 +65,8 @@ def diagnose(comparison: Comparison, sample: Sample):
     state = classify(sample.candidate)
     if differences:
         return Finding("unpaired", "比较条件不一致：" + "、".join(differences), "待补齐配对条件")
+    if not audio_inputs_agree(sample.baseline, sample.candidate, expected=sample.audio_sha256):
+        return Finding("input_mismatch", "捕获的音频摘要与另一次运行或评测清单冲突。", "先复核实际输入音频")
     if state in {"failed", "missing"}:
         return Finding(state, "候选运行失败或缺少样本记录。", "核对失败阶段、请求索引和日志")
     if state == "transcribed":
@@ -133,6 +135,8 @@ def evaluate(comparison: Comparison):
             if row.language != language or not row.reference or any(
                     classify(output) in {"missing", "failed"} for output in (row.baseline, row.candidate)):
                 continue
+            if not audio_inputs_agree(row.baseline, row.candidate, expected=row.audio_sha256):
+                continue
             reference = tokens(row.reference, language)
             if not reference:
                 continue
@@ -163,10 +167,10 @@ def report(comparison: Comparison):
         "baseline": asdict(comparison.baseline),
         "candidate": asdict(comparison.candidate),
         "samples": [
-            {**asdict(row), "finding": asdict(diagnose(comparison, row)), "decode_evidence": compare_steps(
-                row.baseline.trace if row.baseline else (),
-                row.candidate.trace if row.candidate else (),
+            {**asdict(row), "finding": asdict(diagnose(comparison, row)), **sample_evidence(
+                row.baseline, row.candidate,
                 comparable and bool(comparison.request_document_sha256),
+                expected=row.audio_sha256,
             )}
             for row in comparison.samples
         ],

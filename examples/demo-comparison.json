@@ -57,7 +57,36 @@
               }
             ]
           }
-        ]
+        ],
+        "audio": {
+          "input_sha256": "8324effddc462b34991dd04385d23978e34e8e17eb8ecfe1f137a54692cd4b72",
+          "mel": {
+            "representation": "fixture-mel-f32-le",
+            "shape": [
+              128,
+              100
+            ],
+            "sha256": "625dfa1bb1157e5ba34955a48966a91211b50899fb6e7fd56bb2c04c302c3ac3"
+          },
+          "encoder": {
+            "representation": "fixture-encoder-f32-le",
+            "shape": [
+              13,
+              1024
+            ],
+            "sha256": "c292670ddd9a89b4d855df71fd7415c8a50d84c869dae7bf273be91fb3cd81e7",
+            "sketch": [
+              [
+                0,
+                0.25
+              ],
+              [
+                1024,
+                -0.5
+              ]
+            ]
+          }
+        }
       },
       "candidate": {
         "text": "",
@@ -88,7 +117,36 @@
               }
             ]
           }
-        ]
+        ],
+        "audio": {
+          "input_sha256": "8324effddc462b34991dd04385d23978e34e8e17eb8ecfe1f137a54692cd4b72",
+          "mel": {
+            "representation": "fixture-mel-f32-le",
+            "shape": [
+              128,
+              100
+            ],
+            "sha256": "625dfa1bb1157e5ba34955a48966a91211b50899fb6e7fd56bb2c04c302c3ac3"
+          },
+          "encoder": {
+            "representation": "fixture-encoder-f32-le",
+            "shape": [
+              13,
+              1024
+            ],
+            "sha256": "23d5526caf97d60236e420e58a55a4b9afa312ac9c71b355c145c6dd9370b8ae",
+            "sketch": [
+              [
+                0,
+                0.29
+              ],
+              [
+                1024,
+                -0.39
+              ]
+            ]
+          }
+        }
       }
     },
     {

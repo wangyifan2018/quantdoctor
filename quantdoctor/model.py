@@ -8,6 +8,7 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .audio_evidence import AudioEvidence
     from .trace import DecodeStep
 
 
@@ -77,6 +78,7 @@ class Output:
     first_token_id: int | None
     stop_token_ids: list[int] | None
     trace: tuple["DecodeStep", ...] = ()
+    audio: "AudioEvidence | None" = None
 
     @classmethod
     def parse(cls, data):
@@ -91,6 +93,7 @@ class Output:
         require(data.get("stop_token_ids") is None or valid_ids(data["stop_token_ids"]),
                 "invalid stop_token_ids")
         from .trace import parse_steps
+        from .audio_evidence import AudioEvidence
 
         trace = parse_steps(data.get("trace", ()))
         count, first_id, stop_ids = (data.get(key) for key in ("generated_count", "first_token_id", "stop_token_ids"))
@@ -100,7 +103,8 @@ class Output:
             require(first_id is None or first_id == first.selected_id, "first token contradicts decode trace")
             require(stop_ids is None or set(stop_ids) == set(first.stop_ids), "stop IDs contradict decode trace")
             first_id, stop_ids = first.selected_id, list(first.stop_ids)
-        return cls(data["text"], data.get("raw_text"), data.get("finish_reason"), count, first_id, stop_ids, trace)
+        audio = AudioEvidence.parse(data["audio"]) if data.get("audio") is not None else None
+        return cls(data["text"], data.get("raw_text"), data.get("finish_reason"), count, first_id, stop_ids, trace, audio)
 
 
 @dataclass(frozen=True)
@@ -110,6 +114,7 @@ class Sample:
     candidate: Output | None
     reference: str | None
     language: str | None
+    audio_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -140,8 +145,11 @@ class Comparison:
             reference, language = row.get("reference"), row.get("language")
             require(reference is None or isinstance(reference, str), "reference must be text")
             require(language in (None, "zh", "en"), "language must be en or zh")
+            digest = row.get("audio_sha256")
+            require(digest is None or isinstance(digest, str) and SHA256.fullmatch(digest),
+                    "sample audio_sha256 must be a lowercase SHA-256 digest")
             samples.append(Sample(row["id"], Output.parse(row.get("baseline")),
-                                  Output.parse(row.get("candidate")), reference, language))
+                                  Output.parse(row.get("candidate")), reference, language, digest))
         fingerprints = tuple(data.get(key) for key in ("evaluation_dataset_sha256", "request_document_sha256"))
         require(all(value is None or isinstance(value, str) and SHA256.fullmatch(value) for value in fingerprints),
                 "dataset and request fingerprints must be lowercase SHA-256 digests")

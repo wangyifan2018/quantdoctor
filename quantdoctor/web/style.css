@@ -62,6 +62,10 @@ button, select { font: inherit; color: inherit; background: var(--surface); bord
 #tensors { display: grid; gap: 5px; }
 .tensor-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(85px, 1fr); gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .tensor-row code { overflow-wrap: anywhere; }
+.audio-stage { display: grid; gap: 6px; grid-template-columns: minmax(105px, 1fr) repeat(2, minmax(0, 1.6fr)); border-top: 1px solid var(--line); padding: 7px 0; }
+.audio-stage p { margin: 0; }
+.audio-stage span { overflow-wrap: anywhere; }
+@media (max-width: 520px) { .audio-stage { grid-template-columns: 1fr; } }
 .pair section, .finding, details { padding: 12px; border-radius: 8px; background: var(--page); border: 1px solid var(--line); }
 .finding, details { margin-top: 10px; }
 pre { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }

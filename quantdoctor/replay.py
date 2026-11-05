@@ -3,10 +3,10 @@
 from dataclasses import asdict, replace
 
 from .checkpoint import audit_checkpoints
+from .audio_evidence import audio_inputs_agree, sample_evidence
 from .diagnostics import classify, edit_distance, evaluate, tokens, work_order
 from .model import Comparison, Sample, nonempty, require
 from .performance import MEASUREMENTS, read_measurements
-from .trace import compare_steps
 
 
 def _controls(before: Comparison, after: Comparison, order):
@@ -45,7 +45,7 @@ def _transition(original, repaired):
 
 
 def _sample_edit_delta(original: Sample, repaired: Sample, transition):
-    if transition in {"original_unavailable", "repair_missing", "repair_failed"} or not original.reference:
+    if transition in {"original_unavailable", "repair_missing", "repair_failed", "input_mismatch"} or not original.reference:
         return None
     if original.language not in {"zh", "en"}:
         return None
@@ -122,13 +122,16 @@ def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=N
     samples = {}
     shared = set()
     counts = {code: 0 for code in ("recovered_text", "new_empty", "still_empty", "stable_text",
-                                  "repair_missing", "repair_failed", "original_unavailable")}
+                                  "repair_missing", "repair_failed", "original_unavailable", "input_mismatch")}
     for original in before.samples:
         repaired = repaired_rows[original.id]
-        require((original.reference, original.language, original.baseline) ==
-                (repaired.reference, repaired.language, repaired.baseline),
-                f"{original.id}: reference, language or baseline output changed")
-        transition = _transition(original.candidate, repaired.candidate)
+        require((original.reference, original.language, original.baseline, original.audio_sha256) ==
+                (repaired.reference, repaired.language, repaired.baseline, repaired.audio_sha256),
+                f"{original.id}: reference, language, audio fingerprint or baseline output changed")
+        transition = (_transition(original.candidate, repaired.candidate)
+                      if audio_inputs_agree(original.baseline, original.candidate, repaired.candidate,
+                                            expected=original.audio_sha256)
+                      else "input_mismatch")
         counts[transition] += 1
         edits = _sample_edit_delta(original, repaired, transition)
         if edits is not None and classify(original.baseline) not in {"failed", "missing"}:
@@ -137,10 +140,7 @@ def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=N
             "transition": transition,
             "output": asdict(repaired.candidate) if repaired.candidate is not None else None,
             "edits": edits,
-            "decode_evidence": compare_steps(
-                original.baseline.trace if original.baseline else (),
-                repaired.candidate.trace if repaired.candidate else (),
-            ),
+            **sample_evidence(original.baseline, repaired.candidate, expected=original.audio_sha256),
         }
 
     return {

@@ -4,6 +4,7 @@ from collections import Counter
 from dataclasses import asdict
 from random import Random
 
+from .audio_evidence import audio_inputs_agree
 from .diagnostics import classify, edit_distance, tokens
 from .model import require
 from .performance import compare_performance
@@ -21,7 +22,7 @@ def _validate(comparisons):
             "candidate comparison requires dataset and request fingerprints")
     require(len({run.candidate.id for run in comparisons}) == len(comparisons),
             "candidate run IDs must be distinct")
-    expected = {row.id: (row.reference, row.language, row.baseline) for row in first.samples}
+    expected = {row.id: (row.reference, row.language, row.baseline, row.audio_sha256) for row in first.samples}
     for comparison in comparisons:
         require(comparison.model == first.model and comparison.baseline == first.baseline,
                 "all candidates must share the same model and baseline run")
@@ -30,8 +31,9 @@ def _validate(comparisons):
         require(comparison.evaluation_dataset_sha256 == first.evaluation_dataset_sha256
                 and comparison.request_document_sha256 == first.request_document_sha256,
                 f"{comparison.candidate.id}: dataset or request fingerprint differs")
-        observed = {row.id: (row.reference, row.language, row.baseline) for row in comparison.samples}
-        require(expected == observed, f"{comparison.candidate.id}: sample IDs, references or baseline outputs differ")
+        observed = {row.id: (row.reference, row.language, row.baseline, row.audio_sha256) for row in comparison.samples}
+        require(expected == observed,
+                f"{comparison.candidate.id}: sample IDs, references, audio fingerprints or baseline outputs differ")
 
 
 def _percentile(values, fraction):
@@ -111,7 +113,9 @@ def compare_candidates(comparisons, reference_run_id=None, *, costs=None):
                    else "text" if state == "transcribed" else "empty"] += 1
         metric = {"zh": "cer", "en": "wer"}.get(row.language)
         reference = tokens(row.reference, row.language) if metric and row.reference else []
-        common = bool(reference) and classify(row.baseline) not in UNAVAILABLE and UNAVAILABLE.isdisjoint(states)
+        input_match = audio_inputs_agree(row.baseline, *candidates, expected=row.audio_sha256)
+        common = (bool(reference) and input_match and classify(row.baseline) not in UNAVAILABLE
+                  and UNAVAILABLE.isdisjoint(states))
         if reference:
             eligible[metric] += 1
         if common:
@@ -120,6 +124,7 @@ def compare_candidates(comparisons, reference_run_id=None, *, costs=None):
             contributions[metric].append((len(reference), baseline, deltas))
         samples.append({
             "id": row.id, "reference": row.reference, "common_scoring": common,
+            "input_mismatch": not input_match,
             "baseline_text": row.baseline.text if row.baseline else None,
             "baseline_status": classify(row.baseline),
             "candidates": {run_id: {"status": state, "text": output.text if output else None}
@@ -138,6 +143,7 @@ def compare_candidates(comparisons, reference_run_id=None, *, costs=None):
         "metrics": {key: _measure(rows, candidate_ids, eligible[key], reference_index)
                     for key, rows in contributions.items()},
         "samples": samples,
+        "input_mismatch_samples": sum(sample["input_mismatch"] for sample in samples),
     }
     if costs is not None:
         report["performance"] = compare_performance(report, costs)

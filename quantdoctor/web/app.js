@@ -3,12 +3,14 @@ const labels = {
   missing: "缺少结果", failed: "运行失败", transcribed: "有转写", cleanup_empty: "清理后为空",
   first_step_eos: "首步 EOS", eos_unlocated: "EOS 位置待确认", other_stop: "其他停止条件",
   empty_unknown: "空转写 · 证据不足", baseline_unusable: "基线不可用", unpaired: "配对条件不一致",
+  input_mismatch: "实际输入音频不一致",
 };
 const sources = { fixture: "模拟数据", torch: "PyTorch 结果", target: "设备结果" };
 const transitions = {
   recovered_text: "恢复文本", new_empty: "新增空转写", still_empty: "仍为空",
   stable_text: "两次均有文本", repair_missing: "复验缺结果", repair_failed: "复验运行失败",
   original_unavailable: "原始结果不可用",
+  input_mismatch: "实际输入音频不一致",
 };
 const percentage = (value) => (value * 100).toFixed(1) + "%";
 const tensorType = row => row ? row.dtype + " [" + row.shape.join(", ") + "]" : "缺失";
@@ -20,6 +22,7 @@ const alignmentLabels = {
   score_stage_mismatch: "分数采集阶段不同",
   stop_set_mismatch: "有效停止 ID 不同",
   missing_scores: "未采集参考或全部停止 token 的分数，或基线已停止",
+  input_mismatch: "捕获的实际输入音频不同",
 };
 
 function text(id, value) {
@@ -105,6 +108,48 @@ function showReplay(replay, original) {
   byId("repaired-column").hidden = false;
   byId("replay-filter").hidden = false;
   byId("transcripts").classList.add("with-repair");
+}
+
+function showAudioEvidence(original, repaired) {
+  const stages = { audio_input: "输入音频", mel: "Mel 特征", encoder: "Encoder 输出", decode: "生成 token" };
+  const states = {
+    same: "内容摘要一致", different: "观察到差异", missing: "缺少配对采集",
+    input_mismatch: "实际音频不同，暂停比较", run_mismatch: "运行条件或请求摘要不匹配",
+    representation_mismatch: "采集表示不同", inconsistent_capture: "摘要与抽样记录冲突",
+  };
+  const container = byId("audio-stages");
+  container.replaceChildren();
+  const sides = repaired ? [["原候选", original], ["修复后", repaired]] : [["候选", original]];
+  const summary = sides.flatMap(([label, evidence]) => evidence.boundary ? [
+    label + "最早观测差异：" + stages[evidence.boundary.stage]
+      + (evidence.boundary.step == null ? "" : "（生成步 " + evidence.boundary.step + "）")
+      + (evidence.boundary.earlier_evidence_complete ? "" : "，前序边界证据有缺口"),
+  ] : []);
+  text("audio-note", summary.length ? summary.join(" · ") + "。差异本身不证明根因。"
+    : "当前没有可定位的差异。未采集项不能作为一致证据。");
+  for (const stage of ["audio_input", "mel", "encoder"]) {
+    const row = document.createElement("div");
+    row.className = "audio-stage";
+    const heading = document.createElement("strong");
+    heading.textContent = stages[stage];
+    row.append(heading);
+    for (const [label, evidence] of sides) {
+      const item = evidence.audio_evidence.find(entry => entry.stage === stage);
+      const cell = document.createElement("p");
+      const shapes = item?.baseline_shape && item.candidate_shape
+        ? " · [" + item.baseline_shape.join(" × ") + "] → [" + item.candidate_shape.join(" × ") + "]" : "";
+      cell.textContent = label + "：" + states[item?.status ?? "missing"] + shapes;
+      if (item?.sketch) {
+        const detail = document.createElement("span");
+        detail.className = "muted";
+        detail.textContent = " · 抽样 " + item.sketch.count + " 点，RMSE " + item.sketch.rmse.toPrecision(3)
+          + "，最大绝对差 " + item.sketch.max_abs_error.toPrecision(3);
+        cell.append(detail);
+      }
+      row.append(cell);
+    }
+    container.append(row);
+  }
 }
 
 function showDecodeEvidence(original, repaired = []) {
@@ -272,6 +317,7 @@ function showCandidatePerformance(data) {
     compared: "仅在 " + performance.complete_candidates + " 个记录完整的候选间比较点估计。另一个方案各项目标均不差且至少一项更好时，标为被支配。",
     insufficient_complete_costs: "至少需要两份同时包含 RTF P95 和峰值内存的记录才判断前沿。",
     insufficient_common_quality: "共同质量数据不足，暂不判断前沿。",
+    input_mismatch: "存在实际音频与对照冲突的样本，暂不判断前沿。",
   };
   text("performance-note", "协议 " + performance.protocol_id + " · " + notes[performance.status]
     + " 产物大小单列。");
@@ -318,7 +364,8 @@ function showCandidates(data) {
   const pp = value => (value > 0 ? "+" : "") + (value * 100).toFixed(2);
   text("source", sources[data.baseline.source]);
   document.querySelector("h1").textContent = "候选方案对照";
-  text("model", data.model + " · 基线 " + data.baseline.id + " · " + data.samples.length + " 条评测记录");
+  text("model", data.model + " · 基线 " + data.baseline.id + " · " + data.samples.length + " 条评测记录"
+    + (data.input_mismatch_samples ? " · " + data.input_mismatch_samples + " 条音频摘要冲突" : ""));
   for (const run of data.candidates) {
     const counts = run.outcomes;
     const precision = Object.entries(run.precision).map(([component, value]) => component + " " + value).join(" · ");
@@ -370,7 +417,8 @@ function showCandidates(data) {
   function renderSample() {
     const sample = rows.get(picker.value);
     text("candidate-reference", "参考转写 " + (sample.reference ?? "未提供"));
-    text("candidate-cohort", sample.common_scoring ? "计入共同评分集合" : "未计入共同评分集合，保留原始结果");
+    text("candidate-cohort", sample.common_scoring ? "计入共同评分集合"
+      : sample.input_mismatch ? "实际输入音频不一致，未计入共同评分集合" : "未计入共同评分集合，保留原始结果");
     const list = byId("candidate-sample-results");
     list.replaceChildren();
     const outputs = [
@@ -471,6 +519,7 @@ function setup(data) {
     text("reference", sample.reference == null ? "参考文本未提供" : "参考 " + sample.reference);
     result("baseline", sample.baseline, baseline);
     result("candidate", sample.candidate, candidate);
+    showAudioEvidence(sample, replayRows.get(sample.id));
     showDecodeEvidence(sample.decode_evidence, replayRows.get(sample.id)?.decode_evidence);
     if (replay) {
       const row = replayRows.get(sample.id);

@@ -68,7 +68,9 @@ def compare_performance(report, data):
             vectors[run_id] = tuple(values[name] for name in objectives)
 
     status = "compared"
-    if not languages or missing_quality:
+    if report["input_mismatch_samples"]:
+        status = "input_mismatch"
+    elif not languages or missing_quality:
         status = "insufficient_common_quality"
     elif len(vectors) < 2:
         status = "insufficient_complete_costs"

@@ -21,25 +21,26 @@ def _responses(document):
     return result
 
 
-def _attach_trace(rows, side, manifest, trace):
-    require(isinstance(trace, dict) and type(trace.get("schema_version")) is int
-            and trace["schema_version"] == 1 and isinstance(trace.get("samples"), dict),
-            "decode trace requires schema_version 1 and a samples object")
+def _attach_evidence(rows, side, manifest, evidence, field):
+    require(isinstance(evidence, dict) and type(evidence.get("schema_version")) is int
+            and evidence["schema_version"] == 1 and isinstance(evidence.get("samples"), dict),
+            f"{field} sidecar requires schema_version 1 and a samples object")
     run = manifest.get(side)
-    require(isinstance(run, dict) and run.get("id") and trace.get("run_id") == run["id"],
-            f"{side} trace does not match the run ID")
+    require(isinstance(run, dict) and run.get("id") and evidence.get("run_id") == run["id"],
+            f"{side} {field} sidecar does not match the run ID")
     fingerprint = manifest.get("request_document_sha256")
     require(isinstance(fingerprint, str) and SHA256.fullmatch(fingerprint)
-            and trace.get("request_document_sha256") == fingerprint,
-            f"{side} trace requires the matching request fingerprint")
+            and evidence.get("request_document_sha256") == fingerprint,
+            f"{side} {field} sidecar requires the matching request fingerprint")
     by_id = {row["id"]: row[side] for row in rows}
-    for sample_id, steps in trace["samples"].items():
+    for sample_id, observation in evidence["samples"].items():
         output = by_id.get(sample_id)
-        require(output is not None, f"{side} trace has no response for {sample_id}")
-        output["trace"] = steps
+        require(output is not None, f"{side} {field} sidecar has no response for {sample_id}")
+        output[field] = observation
 
 
-def import_edge(manifest, baseline, candidate, *, baseline_trace=None, candidate_trace=None):
+def import_edge(manifest, baseline, candidate, *, baseline_trace=None, candidate_trace=None,
+                baseline_audio=None, candidate_audio=None):
     require(isinstance(manifest, dict) and isinstance(manifest.get("samples"), list),
             "manifest requires a samples array")
     baseline_by_index, candidate_by_index = _responses(baseline), _responses(candidate)
@@ -53,11 +54,13 @@ def import_edge(manifest, baseline, candidate, *, baseline_trace=None, candidate
         indices.add(index)
         rows.append({
             "id": row.get("id"), "reference": row.get("reference"), "language": row.get("language"),
+            "audio_sha256": row.get("audio_sha256"),
             "baseline": baseline_by_index.get(index), "candidate": candidate_by_index.get(index),
         })
     require(not (baseline_by_index.keys() | candidate_by_index.keys()) - indices,
             "Edge outputs include request indices absent from the manifest")
-    for side, trace in (("baseline", baseline_trace), ("candidate", candidate_trace)):
-        if trace is not None:
-            _attach_trace(rows, side, manifest, trace)
+    for field, left, right in (("trace", baseline_trace, candidate_trace), ("audio", baseline_audio, candidate_audio)):
+        for side, evidence in (("baseline", left), ("candidate", right)):
+            if evidence is not None:
+                _attach_evidence(rows, side, manifest, evidence, field)
     return {**manifest, "samples": rows}
