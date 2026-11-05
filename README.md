@@ -42,6 +42,8 @@ python3 -m quantdoctor serve comparison.json
 
 已有本地 HF 权重时，可在 Mac 上用 `inspect` 查看组件体积、存储 dtype 和 scale，用 `audit-checkpoints` 检查修复前后的实际张量变化。见 [模型产物检查](docs/CHECKPOINT.md)。
 
+多个候选可在同一批样本上比较覆盖、CER/WER 和相对指定参照的配对区间。见 [多候选对照](docs/COMPARE.md)。
+
 ## 选择性 QAT
 
 本机生成并校验配方。

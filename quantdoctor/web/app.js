@@ -256,7 +256,90 @@ function showCheckpoint(data) {
   byId("checkpoint").hidden = false;
 }
 
+function showCandidates(data) {
+  const create = (tag, value, className) => {
+    const element = document.createElement(tag);
+    if (value != null) element.textContent = value;
+    if (className) element.className = className;
+    return element;
+  };
+  const pp = value => (value > 0 ? "+" : "") + (value * 100).toFixed(2);
+  text("source", sources[data.baseline.source]);
+  document.querySelector("h1").textContent = "候选方案对照";
+  text("model", data.model + " · 基线 " + data.baseline.id + " · " + data.samples.length + " 条评测记录");
+  for (const run of data.candidates) {
+    const counts = run.outcomes;
+    const precision = Object.entries(run.precision).map(([component, value]) => component + " " + value).join(" · ");
+    const group = create("section", null, "checkpoint-group");
+    group.append(create("h3", run.id), create("p", precision, "muted"),
+      create("p", "有文本 " + counts.text + " · 空 " + counts.empty + " · 失败 " + counts.failed + " · 缺失 " + counts.missing));
+    byId("candidate-outcomes").append(group);
+  }
+  for (const [metric, summary] of Object.entries(data.metrics)) {
+    const card = create("section", null, "replay-overview");
+    card.append(create("h2", metric.toUpperCase() + " · 共同样本"),
+      create("p", summary.common_samples + " / " + summary.eligible_samples + " 条有标注记录 · "
+        + summary.reference_units + " 个参考单位" + (summary.baseline_error_rate == null ? ""
+          : " · 基线 " + percentage(summary.baseline_error_rate)), "muted"));
+    if (!summary.common_samples) {
+      card.append(create("p", "没有全部候选与基线均可评分的样本。"));
+      byId("candidate-metrics").append(card);
+      continue;
+    }
+    const extent = Math.max(0.001, ...summary.candidates.flatMap(row =>
+      [row.delta_vs_reference, ...(row.interval_95 ?? [])].map(Math.abs)));
+    const x = value => (50 + value / extent * 48) + "%";
+    card.append(create("p", "参照 " + data.reference_run_id + " · 误差率差值（百分点），中线为零，左侧表示误差更低。", "muted"));
+    for (const row of summary.candidates) {
+      const line = create("div", null, "interval-row");
+      const track = create("div", null, "margin-track interval-track");
+      track.setAttribute("aria-hidden", "true");
+      if (row.interval_95) {
+        const band = create("span", null, "interval-band");
+        band.style.left = x(row.interval_95[0]);
+        band.style.width = (row.interval_95[1] - row.interval_95[0]) / extent * 48 + "%";
+        track.append(band);
+      }
+      const point = create("span", null, "interval-point");
+      point.style.left = x(row.delta_vs_reference);
+      track.append(point);
+      const interval = row.interval_95 ? " · 95% [" + row.interval_95.map(pp).join(", ") + "]"
+        : " · 样本不足，未计算区间";
+      line.append(create("strong", row.run_id), track,
+        create("div", percentage(row.error_rate) + " · Δ " + pp(row.delta_vs_reference) + interval));
+      card.append(line);
+    }
+    byId("candidate-metrics").append(card);
+  }
+  const picker = byId("candidate-sample");
+  for (const sample of data.samples) picker.add(new Option(sample.id));
+  const rows = new Map(data.samples.map(sample => [sample.id, sample]));
+  function renderSample() {
+    const sample = rows.get(picker.value);
+    text("candidate-reference", "参考转写 " + (sample.reference ?? "未提供"));
+    text("candidate-cohort", sample.common_scoring ? "计入共同评分集合" : "未计入共同评分集合，保留原始结果");
+    const list = byId("candidate-sample-results");
+    list.replaceChildren();
+    const outputs = [
+      [data.baseline.id, sample.baseline_status, sample.baseline_text],
+      ...data.candidates.map(run => [run.id, sample.candidates[run.id].status, sample.candidates[run.id].text]),
+    ];
+    for (const [id, status, transcript] of outputs) {
+      const row = create("div", null, "tensor-row");
+      row.append(create("strong", id), create("span", (labels[status] ?? status) + " · " + (transcript?.trim() || "∅")));
+      list.append(row);
+    }
+  }
+  picker.addEventListener("change", renderSample);
+  renderSample();
+  byId("candidate-board").hidden = false;
+}
+
 function setup(data) {
+  if (data.kind === "candidate_comparison") {
+    showCandidates(data);
+    return;
+  }
   if (data.kind === "checkpoint" || data.kind === "checkpoint_audit") {
     showCheckpoint(data);
     return;

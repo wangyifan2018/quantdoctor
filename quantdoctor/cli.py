@@ -15,6 +15,7 @@ from .diagnostics import report, work_order
 from .edge import import_edge
 from .model import Comparison, load_json, require
 from .qat import QATRecipe, template
+from .quality import compare_candidates
 from .replay import verify_repair
 
 
@@ -46,6 +47,9 @@ def _replay(before, args):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="quantdoctor")
     commands = parser.add_subparsers(dest="command", required=True)
+    compare = commands.add_parser("compare", help="Compare candidates on a shared ASR cohort")
+    compare.add_argument("comparisons", type=Path, nargs="+")
+    compare.add_argument("--reference-run", help="Use this run for paired error-rate differences")
     inspect = commands.add_parser("inspect", help="Inspect a local HF safetensors checkpoint")
     inspect.add_argument("snapshot", type=Path)
     inspect.add_argument("--hash-weights", action="store_true")
@@ -53,7 +57,7 @@ def main(argv=None):
     audit.add_argument("original", type=Path)
     audit.add_argument("candidate", type=Path)
     audit.add_argument("--expect-component", choices=("audio", "backbone", "head", "other"))
-    for command in (inspect, audit):
+    for command in (compare, inspect, audit):
         destination = command.add_mutually_exclusive_group()
         destination.add_argument("-o", "--output", type=Path)
         destination.add_argument("--port", type=int, help="Open a loopback inspection workbench")
@@ -109,8 +113,11 @@ def main(argv=None):
         worker.add_argument(f"--{flag}", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
-        if args.command in {"inspect", "audit-checkpoints"}:
-            if args.command == "inspect":
+        if args.command in {"compare", "inspect", "audit-checkpoints"}:
+            if args.command == "compare":
+                data = compare_candidates([Comparison.parse(load_json(path)) for path in args.comparisons],
+                                          args.reference_run)
+            elif args.command == "inspect":
                 data = inspect_checkpoint(args.snapshot, hash_weights=args.hash_weights)
             else:
                 data = audit_checkpoints(args.original, args.candidate, args.expect_component)

@@ -10,8 +10,8 @@
 |---|---|---|
 | Run Model 与导入 | 记录运行来源、有效精度与比较条件，按样本 ID 配对，保留缺失和失败。 | 已实现对照合同和 Edge-LLM JSON 导入。真实报告接入待做。 |
 | ASR 数据清单 | 分离校准与评测，记录有序音频内容摘要并准备请求。 | 已实现本地校验、校准 callable 和评测 bundle。设备执行待验证。 |
-| ASR Evaluator 与分诊 | 计算配对 CER/WER、空转写，区分 EOS、清理异常、失败和缺证据。 | 已实现基础规则和逐步 EOS 分差对齐。板端采集、音频边界证据和置信区间待做。 |
-| Planner 与 Web | 展示证据、提出单变量改变、导出工单。规划逐组干预后再细化到层。 | 已实现本地样本视图、工单、三组复验对照和 [EOS 分差图](DECODE_EVIDENCE.md)。设备实测和多候选排序待做。 |
+| ASR Evaluator 与分诊 | 计算配对 CER/WER、空转写，区分 EOS、清理异常、失败和缺证据。 | 已实现基础规则和逐步 EOS 分差对齐。多候选对照已支持按样本配对的误差区间。板端采集与音频边界证据待做。 |
+| Planner 与 Web | 展示证据、提出单变量改变、导出工单。规划逐组干预后再细化到层。 | 已实现本地样本视图、工单、三组复验对照和 [EOS 分差图](DECODE_EVIDENCE.md)。已支持 [多候选的共同样本排序](COMPARE.md)。设备实测与多目标排序待做。 |
 | Model Inspector | 从 HF config 与 safetensors 头部解析张量 shape、dtype、ties 和组件体积，按需核对实际张量内容。 | 已实现 [本地检查和变更审计](CHECKPOINT.md)。校准、导出和 engine 之间的 FQN 映射待做。 |
 | Artifact Store 与协调器 | 读取工单、解析内容摘要、物化输入、保存阶段结果。首次设备接入通过文件往返。 | 已实现离线阶段合同和 [输入及结果产物校验](ARTIFACTS.md)。自动串联、重试与缓存待做。 |
 | Backend Adapter | 版本绑定的 PTQ、QAT、模型探针、ONNX 导出、Engine Build、运行与采样。 | 选择性 QAT 有独立试验性 Worker。其余保留阶段接口。实际执行均需单独验证。 |
