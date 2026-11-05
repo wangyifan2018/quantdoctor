@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "stage": "infer",
+  "backend": "edge-onnx-cli-fixture",
+  "profile_id": "thor-fixture",
+  "inputs": {
+    "engine_bundle": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "requests": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}

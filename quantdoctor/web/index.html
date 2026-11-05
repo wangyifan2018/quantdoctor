@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QuantDoctor · ASR 诊断</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header><strong>QuantDoctor</strong><span id="source"></span></header>
+  <main>
+    <h1>ASR 空转写诊断</h1>
+    <p id="model" class="muted"></p>
+    <p id="error" role="alert" hidden></p>
+    <div id="workbench" hidden>
+      <section id="metrics" aria-label="配对指标"></section>
+      <div class="workspace">
+        <aside>
+          <label for="sample-filter">样本筛选</label>
+          <select id="sample-filter">
+            <option value="all">全部样本</option>
+            <option value="issues">仅异常</option>
+          </select>
+          <div id="samples" aria-label="样本列表"></div>
+        </aside>
+        <article id="detail" aria-live="polite">
+          <h2 id="sample-id"></h2>
+          <p id="reference" class="muted"></p>
+          <div class="pair">
+            <section><h3>基线</h3><p id="baseline-precision" class="muted"></p><pre id="baseline-text"></pre><p id="baseline-stop" class="muted"></p></section>
+            <section><h3>候选</h3><p id="candidate-precision" class="muted"></p><pre id="candidate-text"></pre><p id="candidate-stop" class="muted"></p></section>
+          </div>
+          <section class="finding">
+            <h3 id="finding-title"></h3><p id="evidence"></p><p id="attribution" class="muted"></p>
+          </section>
+          <details id="intervention">
+            <summary>查看单变量修复工单</summary>
+            <p id="action"></p>
+            <pre id="change"></pre>
+            <p id="controls" class="muted"></p>
+            <p id="verify" class="muted"></p>
+          </details>
+        </article>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "job_id": "4feb4f9da9cbe6d271bb36e90e127b0e67739a78e5adecbe6c8fbcf9d8bfd6a0",
+  "profile_id": "thor-fixture",
+  "source": "fixture",
+  "status": "unsupported",
+  "outputs": {},
+  "message": "Synthetic interface example. No device adapter is registered."
+}
