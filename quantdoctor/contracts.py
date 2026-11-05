@@ -73,10 +73,13 @@ class WorkerJob:
         return cls(stage, data["backend"], data["profile_id"], _digests(data["inputs"], ARTIFACTS[stage].inputs))
 
     @property
+    def document(self):
+        return {"schema_version": 1, "stage": self.stage.value, "backend": self.backend,
+                "profile_id": self.profile_id, "inputs": dict(self.inputs)}
+
+    @property
     def id(self):
-        payload = {"schema_version": 1, "stage": self.stage.value, "backend": self.backend,
-                   "profile_id": self.profile_id, "inputs": dict(self.inputs)}
-        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        canonical = json.dumps(self.document, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
         return sha256(canonical.encode("ascii")).hexdigest()
 
 

@@ -388,7 +388,46 @@ function showCandidates(data) {
   byId("candidate-board").hidden = false;
 }
 
+function showPreflight(data) {
+  document.querySelector("h1").textContent = "目标设备预检";
+  text("source", sources[data.source]);
+  text("model", data.model + " · " + data.candidate_id + " · " + data.profile.id
+    + " (" + data.profile.platform + ", " + data.profile.edge_commit.slice(0, 8) + ")");
+  for (const [key, result] of Object.entries(data.checks)) {
+    const card = document.createElement("section");
+    card.className = "checkpoint-group";
+    const title = document.createElement("h2");
+    title.textContent = key === "candidate" ? "原候选" : "工单方案";
+    const state = document.createElement("p");
+    state.textContent = result.state === "blocked" ? "存在已知约束" : "待设备验证";
+    const precision = document.createElement("p");
+    precision.className = "muted";
+    precision.textContent = Object.entries(result.precision).map(([part, dtype]) => part + " " + dtype).join(" · ");
+    card.append(title, state, precision);
+    const issues = document.createElement("ul");
+    for (const issue of result.issues) {
+      const row = document.createElement("li");
+      row.textContent = (issue.severity === "block" ? "阻止部署预检 · " : "需复核 · ") + issue.detail
+        + (issue.components ? " " + issue.components.join("、") : "");
+      if (issue.source) {
+        const link = document.createElement("a");
+        link.href = issue.source;
+        link.textContent = "查看依据";
+        row.append(" ", link);
+      }
+      issues.append(row);
+    }
+    if (issues.children.length) card.append(issues);
+    byId("target-checks").append(card);
+  }
+  byId("target-preflight").hidden = false;
+}
+
 function setup(data) {
+  if (data.kind === "target_preflight") {
+    showPreflight(data);
+    return;
+  }
   if (data.kind === "candidate_comparison") {
     showCandidates(data);
     return;

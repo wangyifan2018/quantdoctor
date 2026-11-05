@@ -11,3 +11,20 @@ python3 -m quantdoctor job-result-validate job.json result.json --artifact-root 
 用 `artifact-digest` 的值填写工单或结果的对应角色。文件摘要为 SHA-256，输入为 UTF-8 前缀 `quantdoctor:file:v1`、一个 NUL 字节和原始文件 SHA-256 的 32 字节值。目录摘要使用 `quantdoctor:directory:v1`、一个 NUL 字节及规范 JSON 文件清单。清单包含 `schema_version: 1` 和按路径排序的 `files`，每条为相对 POSIX 路径与原始文件的十六进制 SHA-256。JSON 使用 ASCII 转义、排序键、无分隔空格。复制文件树到新目录时摘要相同，改名或改内容时摘要改变。检查要求角色内有普通文件，拒绝符号链接及空目录工件。
 
 工单 ID、角色和内容一致意味着回传文件匹配声明。验证输出保留来源，且 `execution_verified` 为 false。设备能力仍以实际成功执行及其独立验收证据为准。HF checkpoint 用于修复复验的张量内容摘要有独立用途，见 [Checkpoint 审计](CHECKPOINT.md)。
+
+## 生成并串联工单
+
+在阶段输入根目录放好同名角色，再生成工单：
+
+```sh
+python3 -m quantdoctor job-create export edge-onnx-cli-v1 linux-export-v1 export-inputs -o export.json
+```
+
+Worker 回传结果后，把下一阶段需要的产物复制到下游输入目录的同名角色，并放入新增配置。例如将 `export-outputs/onnx_bundle` 复制为 `build-inputs/onnx_bundle`，并准备 `build-inputs/build_config`：
+
+```sh
+python3 -m quantdoctor job-next export.json export-result.json export-outputs \
+  build edge-onnx-cli-v1 thor-sm110-sdk-v1 build-inputs -o build.json
+```
+
+支持 PTQ/QAT → Export → Build → Infer 或 Profile。命令校验上游工单 ID、成功状态、所有输出摘要、下游输入角色与复制过来的产物。Engine 从 Build 转交 Infer 或 Profile 时要求使用相同 profile ID。要试跑合成文件链，可显式传 `--allow-fixture`。实验 provenance 以原始结果文件为准，保留每个上游工单和结果供复核。下游工单本身描述输入内容和执行配置。

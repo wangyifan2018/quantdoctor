@@ -9,12 +9,14 @@ from tempfile import TemporaryDirectory
 
 from .artifacts import artifact_digest, verify_artifacts
 from .checkpoint import audit_checkpoints, inspect_checkpoint
-from .contracts import WorkerJob, WorkerResult
+from .contracts import Stage, WorkerJob, WorkerResult
 from .datasets import load_asr_dataset, prepare_evaluation
 from .diagnostics import report, work_order
 from .edge import import_edge
+from .handoff import create_job, next_job
 from .model import Comparison, load_json, require
 from .qat import QATRecipe, template
+from .preflight import TargetProfile, preflight
 from .quality import compare_candidates
 from .replay import verify_repair
 
@@ -58,7 +60,11 @@ def main(argv=None):
     audit.add_argument("original", type=Path)
     audit.add_argument("candidate", type=Path)
     audit.add_argument("--expect-component", choices=("audio", "backbone", "head", "other"))
-    for command in (compare, inspect, audit):
+    target = commands.add_parser("preflight", help="Check a candidate and optional repair against a target profile")
+    target.add_argument("comparison", type=Path)
+    target.add_argument("profile", type=Path)
+    target.add_argument("--sample-id")
+    for command in (compare, inspect, audit, target):
         destination = command.add_mutually_exclusive_group()
         destination.add_argument("-o", "--output", type=Path)
         destination.add_argument("--port", type=int, help="Open a loopback inspection workbench")
@@ -108,20 +114,35 @@ def main(argv=None):
     result.add_argument("job", type=Path)
     result.add_argument("result", type=Path)
     result.add_argument("--artifact-root", type=Path, help="Verify the successful result's output artifacts")
+    build_job = commands.add_parser("job-create", help="Create an offline job from staged input roles")
+    chain_job = commands.add_parser("job-next", help="Verify the previous result and build the next offline job")
+    chain_job.add_argument("upstream_job", type=Path)
+    chain_job.add_argument("upstream_result", type=Path)
+    chain_job.add_argument("upstream_outputs", type=Path)
+    chain_job.add_argument("--allow-fixture", action="store_true")
+    for command in (build_job, chain_job):
+        command.add_argument("stage", choices=[stage.value for stage in Stage])
+        command.add_argument("backend")
+        command.add_argument("profile_id")
+        command.add_argument("inputs", type=Path)
+        command.add_argument("-o", "--output", type=Path)
     worker = commands.add_parser("qat-run", help="Run selective QAT on a Linux/CUDA worker")
     worker.add_argument("recipe", type=Path)
     for flag in ("snapshot", "edge-repo", "output"):
         worker.add_argument(f"--{flag}", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
-        if args.command in {"compare", "inspect", "audit-checkpoints"}:
+        if args.command in {"compare", "inspect", "audit-checkpoints", "preflight"}:
             if args.command == "compare":
                 data = compare_candidates([Comparison.parse(load_json(path)) for path in args.comparisons],
                                           args.reference_run, costs=load_json(args.costs) if args.costs else None)
             elif args.command == "inspect":
                 data = inspect_checkpoint(args.snapshot, hash_weights=args.hash_weights)
-            else:
+            elif args.command == "audit-checkpoints":
                 data = audit_checkpoints(args.original, args.candidate, args.expect_component)
+            else:
+                data = preflight(Comparison.parse(load_json(args.comparison)),
+                                 TargetProfile.parse(load_json(args.profile)), args.sample_id)
             if args.port is None:
                 emit(data, args.output)
             else:
@@ -176,6 +197,16 @@ def main(argv=None):
             print("QAT recipe schema validated. Model, datasets and device are checked by the worker.")
         elif args.command == "artifact-digest":
             print(artifact_digest(args.artifact))
+        elif args.command in {"job-create", "job-next"}:
+            stage = Stage(args.stage)
+            if args.command == "job-create":
+                job = create_job(stage, args.backend, args.profile_id, args.inputs)
+            else:
+                upstream = WorkerJob.parse(load_json(args.upstream_job))
+                result = WorkerResult.parse(load_json(args.upstream_result), upstream)
+                job = next_job(upstream, result, args.upstream_outputs, stage, args.backend, args.profile_id,
+                               args.inputs, allow_fixture=args.allow_fixture)
+            emit(job.document, args.output)
         elif args.command in {"job-validate", "job-input-verify", "job-result-validate"}:
             job = WorkerJob.parse(load_json(args.job))
             if args.command == "job-validate":
