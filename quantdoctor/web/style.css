@@ -38,6 +38,8 @@ button, select { font: inherit; color: inherit; background: var(--surface); bord
 .replay-counts button { padding: 3px 7px; font-variant-numeric: tabular-nums; cursor: pointer; }
 .replay-counts button:disabled { color: var(--muted); cursor: default; }
 .replay-counts .replay-effect { border-inline-start: 3px solid var(--outcome); }
+#replay-holdout-effect { margin-block: 12px; }
+#replay-holdout-checks { overflow-wrap: anywhere; }
 .transition { margin-top: 10px; color: var(--accent); }
 #step-control { font-size: 13px; }
 .decode-row { display: grid; grid-template-columns: minmax(64px, 1fr) minmax(72px, 2fr) minmax(52px, auto); gap: 6px; align-items: center; margin: 5px 0; }

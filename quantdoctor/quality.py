@@ -53,7 +53,7 @@ def _percentile(values, fraction):
     return values[lower] + (position - lower) * (values[upper] - values[lower])
 
 
-def _paired_intervals(rows, candidates):
+def paired_intervals(rows, candidates):
     if len(rows) < MIN_INTERVAL_UNITS:
         return [None] * candidates
     rng = Random(SEED)
@@ -110,7 +110,7 @@ def _measure(rows, candidate_ids, eligible_count, reference_index, has_speakers)
         sampling_unit = "utterance"
         paired = [(row.units, _relative(row.deltas, reference_index)) for row in rows]
         interval_status = "available" if len(paired) >= MIN_INTERVAL_UNITS else "insufficient_units"
-    intervals = _paired_intervals(paired, len(candidate_ids))
+    intervals = paired_intervals(paired, len(candidate_ids))
     deltas = [sum(row.deltas[index] for row in rows) for index in range(len(candidate_ids))]
     relative = _relative(deltas, reference_index)
     scored = []

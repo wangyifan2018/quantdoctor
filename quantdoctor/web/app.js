@@ -17,6 +17,7 @@ const editEffects = {
   same_edits: ["编辑数相同", "outcome-same"], unscored: ["无法评分", "outcome-missing"],
 };
 const percentage = (value) => (value * 100).toFixed(1) + "%";
+const percentagePoints = value => (value > 0 ? "+" : "") + (value * 100).toFixed(2);
 const tensorType = row => row ? row.dtype + " [" + row.shape.join(", ") + "]" : "缺失";
 const alignmentLabels = {
   aligned: "已对齐",
@@ -113,12 +114,77 @@ function describeReplayRow(row) {
     + edits.original + " → " + edits.repaired + "（" + edits.reference_units + " 个参考单位）" : " · 无可比编辑数");
 }
 
+function intervalTrack(value, interval, extent) {
+  const track = document.createElement("div");
+  track.className = "margin-track interval-track";
+  track.setAttribute("aria-hidden", "true");
+  const x = value => (50 + value / extent * 48) + "%";
+  if (interval) {
+    const band = document.createElement("span");
+    band.className = "interval-band";
+    band.style.left = x(interval[0]);
+    band.style.width = (interval[1] - interval[0]) / extent * 48 + "%";
+    track.append(band);
+  }
+  const point = document.createElement("span");
+  point.className = "interval-point";
+  point.style.left = x(value);
+  track.append(point);
+  return track;
+}
+
+function showHoldout(replay) {
+  const holdout = replay.holdout;
+  text("replay-title", "独立留出集复验");
+  text("replay-holdout-summary", "诊断集 " + holdout.diagnosis_samples + " 条 · " + holdout.diagnosis_speakers
+    + " 位说话人　｜　留出集 " + holdout.evaluation_samples + " 条 · " + holdout.evaluation_speakers
+    + " 位说话人　｜　样本 ID、音频摘要和说话人 ID 无交叉");
+  byId("replay-holdout-summary").hidden = false;
+  const checks = byId("replay-holdout-checks");
+  const add = value => {
+    const paragraph = document.createElement("p");
+    paragraph.textContent = value;
+    checks.append(paragraph);
+  };
+  add("诊断观察 · " + replay.work_order.finding.evidence);
+  add("诊断集摘要 " + replay.work_order.evaluation_dataset_sha256);
+  add("留出集摘要 " + holdout.evaluation_dataset_sha256);
+  for (const [role, label] of [["baseline", "基线"], ["candidate", "原方案"]]) {
+    const control = holdout.controls[role];
+    const artifacts = Object.keys(control.matched_artifacts);
+    add(label + " · " + control.diagnosis_run_id + " → " + control.evaluation_run_id
+      + " · 运行设置与精度声明匹配"
+      + (artifacts.length ? " · 已对齐 " + artifacts.map(key => key.split("_")[0]).join("、") + " 摘要"
+        : " · 缺少两侧可比的产物摘要"));
+  }
+  byId("replay-holdout").hidden = false;
+  const metrics = Object.entries(replay.metrics).filter(([, values]) => values.paired);
+  if (!metrics.length) return;
+  const extent = Math.max(0.001, ...metrics.flatMap(([, values]) =>
+    [values.delta_vs_original, ...(values.interval_95 ?? [])].map(Math.abs)));
+  for (const [name, values] of metrics) {
+    const line = document.createElement("div");
+    line.className = "interval-row";
+    const label = document.createElement("strong");
+    label.textContent = name.toUpperCase();
+    const detail = document.createElement("div");
+    detail.textContent = percentagePoints(values.delta_vs_original) + " 个百分点 · " + values.speaker_count
+      + " 位说话人" + (values.interval_95 ? " · 95% [" + values.interval_95.map(percentagePoints).join(", ") + "]"
+        : " · 少于 " + values.min_speakers + " 位，未计算区间");
+    line.append(label, intervalTrack(values.delta_vs_original, values.interval_95, extent), detail);
+    byId("replay-holdout-intervals").append(line);
+  }
+  byId("replay-holdout-effect").hidden = false;
+}
+
 function showReplay(replay, selectSamples) {
-  const original = replay.work_order.candidate;
+  const original = replay.original_run;
   const [field, value] = Object.entries(replay.change)[0];
   const component = field.split(".")[1];
   text("replay-change", original.id + " → " + replay.repair_run.id + " · 工单变更 "
-    + component + " " + original.precision[component] + " → " + value + " · 工单样本 " + replay.work_order.sample_id);
+    + component + " " + original.precision[component] + " → " + value + " · 工单样本 " + replay.work_order.sample_id
+    + (replay.holdout ? "（诊断集）" : ""));
+  if (replay.holdout) showHoldout(replay);
   function appendCount(container, label, count, filter, style) {
     const button = document.createElement("button");
     button.type = "button";
@@ -468,7 +534,7 @@ function showWorkerReceipts(data, create) {
 
 function showCandidateDiagnosis(data, create) {
   const replay = data.replay;
-  const originalId = replay?.work_order.candidate.id;
+  const originalId = replay?.original_run.id;
   const repairId = replay?.repair_run.id;
   const replayRows = new Map(Object.entries(replay?.samples ?? {}));
   const runPicker = byId("diagnosis-run");
@@ -579,7 +645,6 @@ function showCandidates(data) {
     if (className) element.className = className;
     return element;
   };
-  const pp = value => (value > 0 ? "+" : "") + (value * 100).toFixed(2);
   text("source", sources[data.baseline.source]);
   document.querySelector("h1").textContent = "候选方案对照";
   text("model", data.model + " · 基线 " + data.baseline.id + " · " + data.samples.length + " 条评测记录"
@@ -621,7 +686,6 @@ function showCandidates(data) {
     }
     const extent = Math.max(0.001, ...summary.candidates.flatMap(row =>
       [row.delta_vs_reference, ...(row.interval_95 ?? [])].map(Math.abs)));
-    const x = value => (50 + value / extent * 48) + "%";
     card.append(create("p", "参照 " + data.reference_run_id + " · 误差率差值（百分点），中线为零，左侧表示误差更低。", "muted"));
     const clustered = summary.bootstrap_unit === "speaker";
     let samplingNote;
@@ -637,21 +701,11 @@ function showCandidates(data) {
     card.append(create("p", samplingNote, "muted"));
     for (const row of summary.candidates) {
       const line = create("div", null, "interval-row");
-      const track = create("div", null, "margin-track interval-track");
-      track.setAttribute("aria-hidden", "true");
-      if (row.interval_95) {
-        const band = create("span", null, "interval-band");
-        band.style.left = x(row.interval_95[0]);
-        band.style.width = (row.interval_95[1] - row.interval_95[0]) / extent * 48 + "%";
-        track.append(band);
-      }
-      const point = create("span", null, "interval-point");
-      point.style.left = x(row.delta_vs_reference);
-      track.append(point);
-      const interval = row.interval_95 ? " · 95% [" + row.interval_95.map(pp).join(", ") + "]"
+      const track = intervalTrack(row.delta_vs_reference, row.interval_95, extent);
+      const interval = row.interval_95 ? " · 95% [" + row.interval_95.map(percentagePoints).join(", ") + "]"
         : " · 未计算区间";
       line.append(create("strong", row.run_id), track,
-        create("div", percentage(row.error_rate) + " · Δ " + pp(row.delta_vs_reference) + interval));
+        create("div", percentage(row.error_rate) + " · Δ " + percentagePoints(row.delta_vs_reference) + interval));
       card.append(line);
     }
     if (summary.speaker_groups.length) {
@@ -671,7 +725,7 @@ function showCandidates(data) {
           const score = group.candidates[run.id];
           const row = create("div", null, "tensor-row");
           row.append(create("strong", run.id), create("span", percentage(score.error_rate)
-            + " · Δ " + pp(score.delta_vs_reference) + " 个百分点"));
+            + " · Δ " + percentagePoints(score.delta_vs_reference) + " 个百分点"));
           results.append(row);
         }
       }
@@ -686,7 +740,7 @@ function showCandidates(data) {
   if (data.acceptance) showAcceptance(data);
   showWorkerReceipts(data, create);
   if (data.replay) {
-    const original = data.replay.work_order.candidate;
+    const original = data.replay.original_run;
     byId("candidate-replay").append(byId("replay-overview"));
     showReplay(data.replay, selection => selectSamples(original.id, selection));
   }

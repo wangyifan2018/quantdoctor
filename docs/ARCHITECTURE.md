@@ -11,7 +11,7 @@
 | Run Model 与导入 | 记录运行来源、有效精度与比较条件，按样本 ID 配对，保留缺失和失败。 | 已实现对照合同和 Edge-LLM JSON 导入。真实报告接入待做。 |
 | ASR 数据清单 | 分离校准与评测，记录有序音频内容摘要并准备请求。 | 已实现本地校验、说话人隔离检查、校准 callable 和评测 bundle。设备执行待验证。 |
 | ASR Evaluator 与分诊 | 计算配对 CER/WER、空转写，区分 EOS、清理异常、失败和缺证据。 | 已实现基础规则和逐步 EOS 分差对齐。多候选对照支持按说话人配对的误差区间及分组统计。已支持 [音频边界证据导入与对照](AUDIO_EVIDENCE.md)。板端采集待做。 |
-| Planner 与 Web | 展示证据、提出单变量改变、导出工单。规划逐组干预后再细化到层。 | 已实现 [从候选分布下钻到样本和边界证据](COMPARE.md)，同一页面可比较 [复验改善、退化和成本](REPLAY.md)。设备实测待做。 |
+| Planner 与 Web | 展示证据、提出单变量改变、导出工单。规划逐组干预后再细化到层。 | 已实现 [从候选分布下钻到样本和边界证据](COMPARE.md)，同一页面可比较复验改善、退化和成本，并查看 [独立留出集隔离与配对区间](REPLAY.md#独立留出集复验)。设备实测待做。 |
 | Model Inspector | 从 HF config 与 safetensors 头部解析张量 shape、dtype、ties 和组件体积，按需核对实际张量内容。 | 已实现 [本地检查和变更审计](CHECKPOINT.md)。校准、导出和 engine 之间的 FQN 映射待做。 |
 | Artifact Store 与协调器 | 读取工单、解析内容摘要、物化输入、保存阶段结果。首次设备接入通过文件往返。 | 已实现离线阶段合同、下游工单生成及 [将校验过的 Infer 产物关联到评分](ARTIFACTS.md)。实际执行、重试与缓存待做。 |
 | Backend Adapter | 版本绑定的 PTQ、QAT、模型探针、ONNX 导出、Engine Build、运行与采样。 | 选择性 QAT 有 [Mac 输入预检](QAT_PREFLIGHT.md) 和独立试验性 Worker。其余保留阶段接口。实际执行均需单独验证。 |

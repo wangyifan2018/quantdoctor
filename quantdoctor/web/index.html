@@ -81,17 +81,27 @@
       <section id="metrics" aria-label="配对指标"></section>
       <section id="replay-overview" class="replay-overview" hidden>
         <div class="replay-heading">
-          <h2>单变量修复复验</h2>
+          <h2 id="replay-title">单变量修复复验</h2>
           <span class="muted">依据导入的运行记录 · 部署待验收</span>
         </div>
         <p id="replay-change"></p>
+        <p id="replay-holdout-summary" class="muted" hidden></p>
         <h3>转写状态变化</h3>
         <div id="replay-counts" class="replay-counts" aria-label="样本结果变化"></div>
         <h3>原方案与修复后的编辑数</h3>
         <div id="replay-edit-chart" aria-hidden="true"></div>
         <div id="replay-edit-counts" class="replay-counts" aria-label="按编辑数筛选复验样本"></div>
         <div id="replay-metrics" class="muted"></div>
+        <section id="replay-holdout-effect" hidden>
+          <h3>留出集误差率变化</h3>
+          <p class="muted">修复后相对原方案，负值表示误差下降。95% 区间按说话人配对重采样。</p>
+          <div id="replay-holdout-intervals"></div>
+        </section>
         <div id="replay-costs" class="muted"></div>
+        <details id="replay-holdout" hidden>
+          <summary>留出集隔离与运行关联</summary>
+          <div id="replay-holdout-checks"></div>
+        </details>
         <details id="replay-artifacts">
           <summary>Checkpoint 审计</summary>
           <p id="artifact-status"></p>

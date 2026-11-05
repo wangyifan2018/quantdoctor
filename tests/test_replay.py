@@ -1,7 +1,9 @@
+from copy import deepcopy
+from hashlib import sha256
 from pathlib import Path
 import unittest
 
-from quantdoctor.model import Comparison, load_json
+from quantdoctor.model import Comparison, load_json, scoring_sha256
 from quantdoctor.replay import verify_repair
 
 
@@ -72,3 +74,99 @@ class ReplayTests(unittest.TestCase):
         self.costs["original"]["peak_memory_bytes"] = -1
         with self.assertRaisesRegex(ValueError, "invalid costs"):
             self.replay(self.costs)
+
+
+class HoldoutTests(unittest.TestCase):
+    def setUp(self):
+        self.diagnosis = load_json(EXAMPLES / "demo-comparison.json")
+        self.original = deepcopy(self.diagnosis)
+        self.repaired = load_json(EXAMPLES / "demo-retest.json")
+        for row in self.diagnosis["samples"]:
+            captured = (row["baseline"] or {}).get("audio", {}).get("input_sha256")
+            row["audio_sha256"] = captured or sha256(row["id"].encode()).hexdigest()
+            row["speaker_id"] = "diagnosis-speaker"
+        for run, text in ((self.original, "open"), (self.repaired, "open door")):
+            run["evaluation_dataset_sha256"] = "a" * 64
+            run["request_document_sha256"] = "b" * 64
+            for side in ("baseline", "candidate"):
+                run[side]["id"] = "holdout-" + run[side]["id"]
+            run["samples"] = [
+                {"id": f"clip-{index}", "speaker_id": f"speaker-{index % 10}", "reference": "open door", "language": "en",
+                 "audio_sha256": sha256(f"clip-{index}".encode()).hexdigest(),
+                 "baseline": {"text": "open door"}, "candidate": {"text": text}}
+                for index in range(12)
+            ]
+
+    def replay(self, costs=None):
+        return verify_repair(Comparison.parse(self.original), Comparison.parse(self.repaired), "ASR-014",
+                             costs, diagnosis=Comparison.parse(self.diagnosis))
+
+    def test_holdout_separates_anchor_and_counts_speakers_in_interval(self):
+        result = self.replay()
+        self.assertEqual(result["work_order"]["sample_id"], "ASR-014")
+        self.assertNotIn("ASR-014", result["samples"])
+        self.assertEqual(result["work_order"]["candidate"]["id"], "nvfp4-demo")
+        self.assertEqual(result["original_run"]["id"], "holdout-nvfp4-demo")
+        self.assertEqual(result["holdout"]["evaluation_samples"], 12)
+        self.assertEqual(result["holdout"]["evaluation_speakers"], 10)
+        self.assertEqual(result["holdout"]["controls"]["candidate"]["matched_artifacts"], {})
+        self.assertEqual(result["metrics"]["wer"]["interval_95"], [-0.5, -0.5])
+        self.assertEqual(result["metrics"]["wer"]["speaker_count"], 10)
+        self.assertEqual(result["metrics"]["wer"]["delta_vs_original"], -0.5)
+        self.assertIsNone(result["metrics"]["cer"]["delta_vs_original"])
+        self.assertEqual(result["deployment_acceptance"], "not_assessed")
+        for run in (self.original, self.repaired):
+            run["samples"] = [row for row in run["samples"] if row["speaker_id"] != "speaker-9"]
+        low_coverage = self.replay()["metrics"]["wer"]
+        self.assertEqual(low_coverage["speaker_count"], 9)
+        self.assertIsNone(low_coverage["interval_95"])
+
+    def test_holdout_rejects_leakage_even_with_distinct_dataset_fingerprints(self):
+        for field in ("id", "audio_sha256", "speaker_id"):
+            with self.subTest(field=field):
+                original = self.original["samples"][0][field]
+                for run in (self.original, self.repaired):
+                    run["samples"][0][field] = self.diagnosis["samples"][0][field]
+                with self.assertRaisesRegex(ValueError, f"overlap by {field}"):
+                    self.replay()
+                for run in (self.original, self.repaired):
+                    run["samples"][0][field] = original
+        self.diagnosis["samples"][0].pop("speaker_id")
+        with self.assertRaisesRegex(ValueError, "complete speaker_id"):
+            self.replay()
+
+    def test_holdout_rejects_captured_audio_conflict(self):
+        self.repaired["samples"][0]["candidate"]["audio"] = {"input_sha256": "0" * 64}
+        with self.assertRaisesRegex(ValueError, "captured audio"):
+            self.replay()
+
+    def test_holdout_rejects_different_diagnosis_settings_or_artifacts(self):
+        for role in ("baseline", "candidate"):
+            self.diagnosis[role]["request_settings_id"] = "different-decode"
+        with self.assertRaisesRegex(ValueError, "baseline differs from diagnosis: request_settings_id"):
+            self.replay()
+        for role in ("baseline", "candidate"):
+            self.diagnosis[role]["request_settings_id"] = self.original[role]["request_settings_id"]
+        for run in (self.diagnosis, self.original):
+            run["candidate"]["worker_evidence"] = {
+                "profile_id": run["candidate"]["environment_id"], "source": "fixture", "engine_sha256": "e" * 64,
+                "job_id": "1" * 64, "request_artifact_sha256": "2" * 64, "response_artifact_sha256": "3" * 64,
+                "request_document_sha256": run["request_document_sha256"],
+                "evaluation_dataset_sha256": run["evaluation_dataset_sha256"],
+                "scoring_sha256": scoring_sha256(Comparison.parse(run).samples, "candidate"),
+            }
+        controls = self.replay()["holdout"]["controls"]
+        self.assertEqual(controls["candidate"]["matched_artifacts"], {"engine_sha256": "e" * 64})
+        self.diagnosis["candidate"]["worker_evidence"]["engine_sha256"] = "f" * 64
+        with self.assertRaisesRegex(ValueError, "engine_sha256 differs from diagnosis"):
+            self.replay()
+
+    def test_holdout_costs_require_cohort_fingerprints(self):
+        costs = load_json(EXAMPLES / "demo-costs.json")
+        with self.assertRaisesRegex(ValueError, "costs require matching evaluation_dataset_sha256"):
+            self.replay(costs)
+        for field in ("evaluation_dataset_sha256", "request_document_sha256"):
+            costs[field] = self.original[field]
+        for role in ("original", "repaired"):
+            costs[role]["run_id"] = "holdout-" + costs[role]["run_id"]
+        self.assertAlmostEqual(self.replay(costs)["costs"]["measurements"]["rtf_p95"]["delta"], 0.03)

@@ -19,7 +19,7 @@ from .model import Comparison, load_json, require
 from .qat import QATRecipe, load_qat_inputs, template
 from .preflight import TargetProfile, preflight
 from .quality import compare_candidates
-from .replay import verify_repair
+from .replay import COHORT_FINGERPRINTS, verify_repair
 from .worker_evidence import import_worker_edge
 
 
@@ -32,9 +32,10 @@ def emit(document, output=None):
             stream.write(encoded)
 
 
-def _checkpoint_options(command):
+def _replay_evidence_options(command):
     command.add_argument("--original-checkpoint", type=Path)
     command.add_argument("--repaired-checkpoint", type=Path)
+    command.add_argument("--diagnosis", type=Path, help="Comparison that supplied the work-order sample, for holdout replay")
 
 
 def _checkpoint_paths(args):
@@ -45,27 +46,32 @@ def _checkpoint_paths(args):
 
 def _replay_options(command):
     command.add_argument("--costs", type=Path)
-    _checkpoint_options(command)
+    _replay_evidence_options(command)
+
+
+def _diagnosis(args):
+    return Comparison.parse(load_json(args.diagnosis)) if args.diagnosis else None
 
 
 def _replay(before, args):
     after = Comparison.parse(load_json(args.retest))
     return verify_repair(
         before, after, args.sample_id, load_json(args.costs) if args.costs else None,
-        checkpoints=_checkpoint_paths(args),
+        checkpoints=_checkpoint_paths(args), diagnosis=_diagnosis(args),
     )
 
 
-def _compare_replay(comparisons, selection, performance, checkpoints):
+def _compare_replay(comparisons, selection, performance, checkpoints, diagnosis):
     original, repaired, sample_id = selection
     runs = {comparison.candidate.id: comparison for comparison in comparisons}
     require(original in runs and repaired in runs, "replay run IDs must name candidates in the comparison")
     costs = None
     if performance is not None:
-        costs = {"schema_version": 1, "protocol_id": performance["protocol_id"]}
+        costs = {"schema_version": 1, "protocol_id": performance["protocol_id"],
+                 **{field: getattr(runs[original], field) for field in COHORT_FINGERPRINTS}}
         for side, run_id in (("original", original), ("repaired", repaired)):
             costs[side] = {"run_id": run_id, **performance["runs"][run_id]["values"]}
-    return verify_repair(runs[original], runs[repaired], sample_id, costs, checkpoints=checkpoints)
+    return verify_repair(runs[original], runs[repaired], sample_id, costs, checkpoints=checkpoints, diagnosis=diagnosis)
 
 
 def main(argv=None):
@@ -78,7 +84,7 @@ def main(argv=None):
     compare.add_argument("--policy", type=Path, help="Evaluate a deployment policy against imported evidence")
     compare.add_argument("--replay", nargs=3, metavar=("ORIGINAL", "REPAIRED", "SAMPLE_ID"),
                          help="Show a controlled precision repair between two candidate run IDs")
-    _checkpoint_options(compare)
+    _replay_evidence_options(compare)
     inspect = commands.add_parser("inspect", help="Inspect a local HF safetensors checkpoint")
     inspect.add_argument("snapshot", type=Path)
     inspect.add_argument("--hash-weights", action="store_true")
@@ -168,13 +174,15 @@ def main(argv=None):
             if args.command == "compare":
                 checkpoints = _checkpoint_paths(args)
                 require(checkpoints is None or args.replay, "checkpoint audit requires --replay")
+                require(not args.diagnosis or args.replay, "--diagnosis requires --replay")
                 comparisons = [Comparison.parse(load_json(path)) for path in args.comparisons]
                 data = compare_candidates(comparisons, args.reference_run,
                                           costs=load_json(args.costs) if args.costs else None)
                 if args.policy:
                     data["acceptance"] = evaluate_acceptance(data, load_json(args.policy))
                 if args.replay:
-                    data["replay"] = _compare_replay(comparisons, args.replay, data.get("performance"), checkpoints)
+                    data["replay"] = _compare_replay(comparisons, args.replay, data.get("performance"),
+                                                     checkpoints, _diagnosis(args))
             elif args.command == "inspect":
                 data = inspect_checkpoint(args.snapshot, hash_weights=args.hash_weights)
             elif args.command == "audit-checkpoints":
@@ -233,7 +241,8 @@ def main(argv=None):
                     require(args.sample_id, "--retest requires --sample-id")
                     data["replay"] = _replay(before, args)
                 else:
-                    require(not any((args.sample_id, args.costs, args.original_checkpoint, args.repaired_checkpoint)),
+                    require(not any((args.sample_id, args.costs, args.diagnosis,
+                                     args.original_checkpoint, args.repaired_checkpoint)),
                             "repair options require --retest")
                 serve(data, args.port)
             else:

@@ -1,5 +1,6 @@
 """Controlled comparison of an original run and one precision intervention."""
 
+from collections import defaultdict
 from dataclasses import asdict, replace
 
 from .checkpoint import audit_checkpoints
@@ -7,6 +8,9 @@ from .audio_evidence import audio_inputs_agree, sample_evidence
 from .diagnostics import classify, edit_distance, evaluate, tokens, work_order
 from .model import Comparison, Sample, nonempty, require
 from .performance import MEASUREMENTS, read_measurements
+from .quality import MIN_INTERVAL_UNITS, paired_intervals
+
+COHORT_FINGERPRINTS = ("evaluation_dataset_sha256", "request_document_sha256")
 
 
 def _controls(before: Comparison, after: Comparison, order):
@@ -15,7 +19,7 @@ def _controls(before: Comparison, after: Comparison, order):
     require(after.candidate.id != before.candidate.id, "repair requires a new candidate run ID")
     differences = before.candidate.differences(after.candidate)
     require(not differences, "repair changed comparison controls: " + ", ".join(differences))
-    for field in ("evaluation_dataset_sha256", "request_document_sha256"):
+    for field in COHORT_FINGERPRINTS:
         original, repaired = getattr(before, field), getattr(after, field)
         require(original and original == repaired, f"repair requires matching {field}")
     require(all("unknown" not in run.precision.values()
@@ -29,6 +33,47 @@ def _controls(before: Comparison, after: Comparison, order):
     expected = order["finding"]["action"]["change"]
     require(changed == expected, f"repair changed {changed}; expected only {expected}")
     return changed
+
+
+def _holdout_identity(diagnosis, before, after):
+    require(diagnosis.model == before.model, "holdout must reuse the diagnosis model")
+    for field in COHORT_FINGERPRINTS:
+        first, second = getattr(diagnosis, field), getattr(before, field)
+        require(first and second and first != second, f"holdout requires a distinct {field} from diagnosis")
+    identities = {}
+    for field in ("id", "audio_sha256", "speaker_id"):
+        first = {getattr(row, field) for row in diagnosis.samples}
+        second = {getattr(row, field) for row in before.samples}
+        require(None not in first and None not in second, f"holdout isolation requires complete {field}")
+        require(first.isdisjoint(second), f"diagnosis and holdout overlap by {field}")
+        identities[field] = len(first), len(second)
+    require(all(audio_inputs_agree(row.baseline, row.candidate, expected=row.audio_sha256)
+                for run in (diagnosis, before, after) for row in run.samples),
+            "holdout isolation requires captured audio to agree with its manifest")
+    controls = {}
+    for role in ("baseline", "candidate"):
+        first, second = getattr(diagnosis, role), getattr(before, role)
+        differences = first.differences(second)
+        if first.precision != second.precision:
+            differences.append("precision")
+        require(not differences, f"holdout {role} differs from diagnosis: {', '.join(differences)}")
+        hashes = {}
+        for field, left, right in (
+            ("checkpoint_sha256", first.checkpoint_sha256, second.checkpoint_sha256),
+            ("engine_sha256", first.worker_evidence.engine_sha256 if first.worker_evidence else None,
+             second.worker_evidence.engine_sha256 if second.worker_evidence else None),
+        ):
+            if left and right:
+                require(left == right, f"holdout {role} {field} differs from diagnosis")
+                hashes[field] = left
+        controls[role] = {"diagnosis_run_id": first.id, "evaluation_run_id": second.id, "matched_artifacts": hashes}
+    return {
+        "status": "disjoint_declared_identities",
+        "diagnosis_samples": len(diagnosis.samples), "evaluation_samples": len(before.samples),
+        "diagnosis_speakers": identities["speaker_id"][0], "evaluation_speakers": identities["speaker_id"][1],
+        **{field: getattr(before, field) for field in COHORT_FINGERPRINTS},
+        "controls": controls,
+    }
 
 
 def _transition(original, repaired):
@@ -76,12 +121,34 @@ def _cohort_metrics(before, after, shared):
     }
 
 
-def _compare_costs(data, before, after):
+def _holdout_intervals(metrics, before, rows, shared):
+    for language, metric in (("zh", "cer"), ("en", "wer")):
+        speakers = defaultdict(lambda: [0, 0])
+        for row in before.samples:
+            if row.id in shared and row.language == language:
+                edits = rows[row.id]["edits"]
+                pair = speakers[row.speaker_id]
+                pair[0] += edits["reference_units"]
+                pair[1] += edits["repaired"] - edits["original"]
+        paired = [(units, [delta]) for _, (units, delta) in sorted(speakers.items())]
+        metric_values = metrics[metric]
+        units = metric_values["reference_units"]
+        metric_values.update({
+            "delta_vs_original": sum(delta for _, [delta] in paired) / units if units else None,
+            "interval_95": paired_intervals(paired, 1)[0],
+            "speaker_count": len(paired), "min_speakers": MIN_INTERVAL_UNITS,
+        })
+
+
+def _compare_costs(data, before, after, *, holdout):
     if data is None:
         return None
     require(isinstance(data, dict) and type(data.get("schema_version")) is int
             and data["schema_version"] == 1 and nonempty(data.get("protocol_id")),
             "costs require schema_version 1 and a measurement protocol ID")
+    if holdout:
+        for field in COHORT_FINGERPRINTS:
+            require(data.get(field) == getattr(before, field), f"holdout costs require matching {field}")
     runs = {}
     for side, run in (("original", before.candidate), ("repaired", after.candidate)):
         entry = data.get(side)
@@ -111,13 +178,16 @@ def _checkpoint_evidence(before, after, changed, checkpoints):
     return {"status": "matched_run_fingerprints", **audit}
 
 
-def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=None, *, checkpoints=None):
+def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=None, *, checkpoints=None,
+                  diagnosis: Comparison | None = None):
     """Check declared controls and show paired evidence. Does not certify deployment."""
-    order = work_order(before, sample_id)
+    order = work_order(diagnosis if diagnosis is not None else before, sample_id)
     expected = order["finding"]["action"]["change"]
     require(len(expected) == 1 and all(key.startswith("precision.") for key in expected),
             "repair replay currently requires a single precision change")
     changed = _controls(before, after, order)
+    holdout = _holdout_identity(diagnosis, before, after) if diagnosis is not None else None
+    performance = _compare_costs(costs, before, after, holdout=holdout is not None)
     checkpoint = _checkpoint_evidence(before, after, changed, checkpoints)
     status = "compared"
     if checkpoint.get("matches_expectation") is False:
@@ -155,6 +225,9 @@ def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=N
             **sample_evidence(original.baseline, repaired.candidate, expected=original.audio_sha256),
         }
 
+    metrics = _cohort_metrics(before, after, shared)
+    if holdout is not None:
+        _holdout_intervals(metrics, before, samples, shared)
     return {
         "schema_version": 1,
         "model": before.model,
@@ -162,12 +235,15 @@ def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=N
         "status": status,
         "deployment_acceptance": "not_assessed",
         "work_order": order,
+        "baseline_run": asdict(before.baseline),
+        "original_run": asdict(before.candidate),
         "repair_run": asdict(after.candidate),
+        "holdout": holdout,
         "change": changed,
         "counts": counts,
         "edit_counts": edit_counts,
-        "metrics": _cohort_metrics(before, after, shared),
+        "metrics": metrics,
         "samples": samples,
-        "costs": _compare_costs(costs, before, after),
+        "costs": performance,
         "checkpoint_audit": checkpoint,
     }
