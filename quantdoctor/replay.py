@@ -3,6 +3,7 @@
 from dataclasses import asdict, replace
 import math
 
+from .checkpoint import audit_checkpoints
 from .diagnostics import classify, edit_distance, evaluate, tokens, work_order
 from .model import Comparison, Sample, nonempty, require
 from .trace import compare_steps
@@ -95,13 +96,34 @@ def _compare_costs(data, before, after):
     return {"protocol_id": data["protocol_id"], "measurements": measurements}
 
 
-def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=None):
+def _checkpoint_evidence(before, after, changed, checkpoints):
+    if checkpoints is None:
+        return {"status": "not_supplied"}
+    original_hash, repaired_hash = before.candidate.checkpoint_sha256, after.candidate.checkpoint_sha256
+    require(original_hash and repaired_hash, "checkpoint audit requires checkpoint_sha256 on both candidate runs")
+    component = next(iter(changed)).split(".", 1)[1]
+    require(component in ("audio", "backbone", "head"), "checkpoint audit does not map this precision component")
+    audit = audit_checkpoints(*checkpoints, expected_component=component)
+    require(audit["model_type"] == "qwen3_asr", "ASR repair requires Qwen3-ASR checkpoint artifacts")
+    require(audit["original_checkpoint_sha256"] == original_hash
+            and audit["candidate_checkpoint_sha256"] == repaired_hash,
+            "checkpoint content does not match the candidate run fingerprints")
+    return {"status": "matched_run_fingerprints", **audit}
+
+
+def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=None, *, checkpoints=None):
     """Check declared controls and show paired evidence. Does not certify deployment."""
     order = work_order(before, sample_id)
     expected = order["finding"]["action"]["change"]
     require(len(expected) == 1 and all(key.startswith("precision.") for key in expected),
             "repair replay currently requires a single precision change")
     changed = _controls(before, after, order)
+    checkpoint = _checkpoint_evidence(before, after, changed, checkpoints)
+    status = "compared"
+    if checkpoint.get("matches_expectation") is False:
+        status = "checkpoint_scope_mismatch"
+    elif checkpoint.get("changed_configs"):
+        status = "checkpoint_config_review"
     repaired_rows = {row.id: row for row in after.samples}
     require(repaired_rows.keys() == {row.id for row in before.samples},
             "repair must preserve sample IDs, including missing results")
@@ -133,7 +155,7 @@ def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=N
         "schema_version": 1,
         "model": before.model,
         "source": before.candidate.source,
-        "status": "compared",
+        "status": status,
         "deployment_acceptance": "not_assessed",
         "work_order": order,
         "repair_run": asdict(after.candidate),
@@ -142,4 +164,5 @@ def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=N
         "metrics": _cohort_metrics(before, after, shared),
         "samples": samples,
         "costs": _compare_costs(costs, before, after),
+        "checkpoint_audit": checkpoint,
     }

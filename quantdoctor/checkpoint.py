@@ -101,13 +101,15 @@ def _object(path):
 
 
 def _digest(items):
-    return sha256(json.dumps(items, ensure_ascii=True, separators=(",", ":")).encode("ascii")).hexdigest()
+    encoded = json.dumps(items, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False)
+    return sha256(encoded.encode("ascii")).hexdigest()
 
 
 def inspect_checkpoint(snapshot: Path, *, hash_weights=False):
     config = _object(snapshot / "config.json")
     quant_file = snapshot / "hf_quant_config.json"
-    quant = _object(quant_file).get("quantization") if quant_file.is_file() else config.get("quantization_config")
+    quant_config = _object(quant_file) if quant_file.is_file() else None
+    quant = quant_config.get("quantization") if quant_config is not None else config.get("quantization_config")
     algo = quant.get("quant_algo") or quant.get("quant_method") if isinstance(quant, dict) else None
     thinker = config.get("thinker_config")
     text = thinker.get("text_config") if isinstance(thinker, dict) else config
@@ -132,14 +134,23 @@ def inspect_checkpoint(snapshot: Path, *, hash_weights=False):
         group["scale_count"] += int(row["scale"])
         group["bytes"] += row["bytes"]
         group["dtype_bytes"][row["dtype"]] = group["dtype_bytes"].get(row["dtype"], 0) + row["bytes"]
+    identity = None
+    config_sha256 = {"config.json": _digest(config),
+                     "hf_quant_config.json": _digest(quant_config) if quant_config is not None else None}
     if hash_weights:
         for name, group in components.items():
             group["tensor_content_sha256"] = _digest([
                 [row["name"], row["dtype"], row["shape"], row["sha256"]]
                 for row in tensors if row["component"] == name
             ])
+        identity = _digest({
+            "schema_version": 1,
+            "config_sha256": config_sha256,
+            "components": {name: group["tensor_content_sha256"] for name, group in components.items()},
+        })
     return {"schema_version": 1, "kind": "checkpoint", "model_type": config.get("model_type"),
             "declared_quantization": algo, "tied_word_embeddings": tied,
+            "checkpoint_sha256": identity, "config_sha256": config_sha256,
             "payload_hashed": hash_weights, "components": components, "tensors": tensors}
 
 
@@ -159,9 +170,14 @@ def audit_checkpoints(before: Path, after: Path, expected_component=None):
                             "original": first, "candidate": second})
     components = sorted({row["component"] for row in changed})
     tie_changed = original["tied_word_embeddings"] != candidate["tied_word_embeddings"]
+    changed_configs = [name for name, digest in original["config_sha256"].items()
+                       if digest != candidate["config_sha256"][name]]
     return {
         "schema_version": 1, "kind": "checkpoint_audit", "model_type": original["model_type"],
         "changed_components": components, "changed_tensors": changed,
+        "changed_configs": changed_configs,
+        "original_checkpoint_sha256": original["checkpoint_sha256"],
+        "candidate_checkpoint_sha256": candidate["checkpoint_sha256"],
         "original_components": original["components"], "components": candidate["components"],
         "tied_word_embeddings": candidate["tied_word_embeddings"], "tie_declaration_changed": tie_changed,
         "declared_quantization": candidate["declared_quantization"],

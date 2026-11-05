@@ -11,6 +11,7 @@ const transitions = {
   original_unavailable: "原始结果不可用",
 };
 const percentage = (value) => (value * 100).toFixed(1) + "%";
+const tensorType = row => row ? row.dtype + " [" + row.shape.join(", ") + "]" : "缺失";
 const alignmentLabels = {
   aligned: "已对齐",
   missing_step: "缺少另一侧的生成步",
@@ -42,6 +43,39 @@ function result(side, output, run) {
   ].join(" · "));
 }
 
+function showReplayAudit(audit) {
+  if (audit.status === "not_supplied") {
+    text("artifact-status", "未提供运行关联的 checkpoint，组件范围依据工单与运行声明。");
+    return;
+  }
+  byId("replay-artifacts").open = true;
+  const groups = audit.changed_components.join("、") || "无";
+  text("artifact-status", (audit.matches_expectation ? "实际张量范围符合工单" : "实际张量范围与工单不一致，本次样本结果仅供观察")
+    + " · 变更组件 " + groups + " · " + audit.changed_tensors.length + " 个张量");
+  text("artifact-config", "两份 checkpoint 摘要匹配运行记录。"
+    + (audit.changed_configs.length ? "需复核配置差异：" : "配置变化：")
+    + (audit.changed_configs.join("、") || "无")
+    + (audit.tie_declaration_changed ? " · 绑定声明变化" : "")
+    + "。部署验收仍需 engine 和板端证据。");
+  const list = byId("artifact-tensors");
+  for (const row of audit.changed_tensors.slice(0, 12)) {
+    const line = document.createElement("div");
+    line.className = "tensor-row";
+    const name = document.createElement("code");
+    name.textContent = row.name;
+    const value = document.createElement("span");
+    value.textContent = tensorType(row.original) + " → " + tensorType(row.candidate);
+    line.append(name, value);
+    list.append(line);
+  }
+  if (audit.changed_tensors.length > 12) {
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = "此处显示前 12 条。完整差异见 CLI 复验 JSON。";
+    list.append(note);
+  }
+}
+
 function showReplay(replay, original) {
   const [field, value] = Object.entries(replay.change)[0];
   const component = field.split(".")[1];
@@ -66,6 +100,7 @@ function showReplay(replay, original) {
       : (number) => number.toFixed(3);
     return costLabels[key] + " " + format(value.original) + " → " + format(value.repaired);
   }).join(" · ") : "未导入可配对的性能数据");
+  showReplayAudit(replay.checkpoint_audit);
   byId("replay-overview").hidden = false;
   byId("repaired-column").hidden = false;
   byId("replay-filter").hidden = false;
@@ -199,7 +234,6 @@ function showCheckpoint(data) {
   for (const name of names) picker.add(new Option(name, name));
   text("tensor-heading", audit ? "实际变更张量" : "张量清单");
   const records = audit ? data.changed_tensors : data.tensors;
-  const describe = row => row ? row.dtype + " [" + row.shape.join(", ") + "]" : "缺失";
   function render() {
     const rows = records.filter(row => !picker.value || row.component === picker.value);
     const items = byId("tensors");
@@ -212,7 +246,7 @@ function showCheckpoint(data) {
       const name = document.createElement("code");
       name.textContent = row.name;
       const info = document.createElement("span");
-      info.textContent = audit ? describe(row.original) + " → " + describe(row.candidate) : describe(row);
+      info.textContent = audit ? tensorType(row.original) + " → " + tensorType(row.candidate) : tensorType(row);
       line.append(name, info);
       items.append(line);
     }

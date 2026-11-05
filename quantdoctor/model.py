@@ -45,6 +45,7 @@ class Run:
     environment_id: str
     request_settings_id: str
     precision: dict
+    checkpoint_sha256: str | None = None
 
     @classmethod
     def parse(cls, data):
@@ -57,7 +58,10 @@ class Run:
                 "precision requires backbone, audio, head and kv")
         require(all(v in ("fp16", "bf16", "fp8", "nvfp4", "unknown") for v in precision.values()),
                 "invalid effective precision")
-        return cls(*(data[field] for field in fields), dict(precision))
+        checkpoint = data.get("checkpoint_sha256")
+        require(checkpoint is None or isinstance(checkpoint, str) and SHA256.fullmatch(checkpoint),
+                "checkpoint_sha256 must be a lowercase SHA-256 digest")
+        return cls(*(data[field] for field in fields), dict(precision), checkpoint)
 
     def differences(self, other):
         return [key for key in ("source", "model_revision", "environment_id", "request_settings_id")

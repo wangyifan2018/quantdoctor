@@ -26,6 +26,22 @@ def emit(document, output=None):
             stream.write(encoded)
 
 
+def _replay_options(command):
+    command.add_argument("--costs", type=Path)
+    command.add_argument("--original-checkpoint", type=Path)
+    command.add_argument("--repaired-checkpoint", type=Path)
+
+
+def _replay(before, args):
+    after = Comparison.parse(load_json(args.retest))
+    checkpoints = args.original_checkpoint, args.repaired_checkpoint
+    require(all(checkpoints) or not any(checkpoints), "both checkpoint directories are required for audit")
+    return verify_repair(
+        before, after, args.sample_id, load_json(args.costs) if args.costs else None,
+        checkpoints=checkpoints if all(checkpoints) else None,
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="quantdoctor")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -61,7 +77,7 @@ def main(argv=None):
     replay.add_argument("comparison", type=Path)
     replay.add_argument("retest", type=Path)
     replay.add_argument("sample_id")
-    replay.add_argument("--costs", type=Path)
+    _replay_options(replay)
     replay.add_argument("-o", "--output", type=Path)
     for name in ("report", "serve"):
         command = commands.add_parser(name)
@@ -70,7 +86,7 @@ def main(argv=None):
             command.add_argument("--port", type=int, default=8765)
             command.add_argument("--retest", type=Path)
             command.add_argument("--sample-id")
-            command.add_argument("--costs", type=Path)
+            _replay_options(command)
         else:
             command.add_argument("-o", "--output", type=Path)
 
@@ -123,9 +139,7 @@ def main(argv=None):
             emit(work_order(comparison, args.sample_id), args.output)
         elif args.command == "replay":
             before = Comparison.parse(load_json(args.comparison))
-            after = Comparison.parse(load_json(args.retest))
-            emit(verify_repair(before, after, args.sample_id, load_json(args.costs) if args.costs else None),
-                 args.output)
+            emit(_replay(before, args), args.output)
         elif args.command in {"report", "serve"}:
             before = Comparison.parse(load_json(args.comparison))
             data = report(before)
@@ -133,11 +147,10 @@ def main(argv=None):
                 from .server import serve
                 if args.retest:
                     require(args.sample_id, "--retest requires --sample-id")
-                    after = Comparison.parse(load_json(args.retest))
-                    data["replay"] = verify_repair(
-                        before, after, args.sample_id, load_json(args.costs) if args.costs else None)
+                    data["replay"] = _replay(before, args)
                 else:
-                    require(not (args.sample_id or args.costs), "--sample-id and --costs require --retest")
+                    require(not any((args.sample_id, args.costs, args.original_checkpoint, args.repaired_checkpoint)),
+                            "repair options require --retest")
                 serve(data, args.port)
             else:
                 emit(data, args.output)

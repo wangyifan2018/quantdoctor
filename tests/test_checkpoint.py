@@ -4,6 +4,11 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from quantdoctor.checkpoint import audit_checkpoints, inspect_checkpoint
+from quantdoctor.model import Comparison, load_json
+from quantdoctor.replay import verify_repair
+
+
+EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 
 def write_shard(path, tensors):
@@ -57,6 +62,7 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(audit["changed_components"], ["audio", "backbone"])
 
     def test_shard_index_and_data_validation(self):
+        original_fingerprint = inspect_checkpoint(self.repaired, hash_weights=True)["checkpoint_sha256"]
         (self.repaired / "model.safetensors").unlink()
         write_shard(self.repaired / "part1.safetensors", [self.float_audio])
         write_shard(self.repaired / "part2.safetensors", [self.backbone])
@@ -64,6 +70,41 @@ class CheckpointTests(unittest.TestCase):
         index.write_text(json.dumps({"weight_map": {self.audio[0]: "part1.safetensors", self.backbone[0]: "part2.safetensors"}}))
         audit = audit_checkpoints(self.original, self.repaired, "audio")
         self.assertTrue(audit["matches_expectation"])
+        self.assertEqual(audit["candidate_checkpoint_sha256"], original_fingerprint)
         write_shard(self.repaired / "part1.safetensors", [(*self.float_audio[:3], b"C")])
         with self.assertRaisesRegex(ValueError, "byte size mismatch"):
             inspect_checkpoint(self.repaired)
+
+    def test_replay_requires_bound_checkpoint_content_and_detects_scope_mismatch(self):
+        before, after = (load_json(EXAMPLES / name) for name in ("demo-comparison.json", "demo-retest.json"))
+
+        def replay():
+            return verify_repair(Comparison.parse(before), Comparison.parse(after), "ASR-014",
+                                 checkpoints=(self.original, self.repaired))
+
+        def bind_runs():
+            for comparison, path in ((before, self.original), (after, self.repaired)):
+                comparison["candidate"]["checkpoint_sha256"] = inspect_checkpoint(
+                    path, hash_weights=True)["checkpoint_sha256"]
+
+        with self.assertRaisesRegex(ValueError, "requires checkpoint_sha256"):
+            replay()
+        bind_runs()
+        result = replay()
+        self.assertEqual(result["status"], "compared")
+        self.assertEqual(result["checkpoint_audit"]["status"], "matched_run_fingerprints")
+        self.assertEqual(result["checkpoint_audit"]["changed_components"], ["audio"])
+        (self.repaired / "hf_quant_config.json").write_text('{"quantization":{"quant_algo":"NVFP4"}}')
+        with self.assertRaisesRegex(ValueError, "does not match the candidate run"):
+            replay()
+        bind_runs()
+        result = replay()
+        self.assertEqual(result["status"], "checkpoint_config_review")
+        self.assertEqual(result["checkpoint_audit"]["changed_configs"], ["hf_quant_config.json"])
+        changed_backbone = (*self.backbone[:3], b"Z")
+        write_shard(self.repaired / "model.safetensors", [changed_backbone, self.float_audio])
+        bind_runs()
+        result = replay()
+        self.assertEqual(result["status"], "checkpoint_scope_mismatch")
+        self.assertEqual(result["deployment_acceptance"], "not_assessed")
+        self.assertEqual(result["samples"]["ASR-014"]["transition"], "recovered_text")
