@@ -7,6 +7,7 @@ import subprocess
 import sys
 from tempfile import TemporaryDirectory
 
+from .acceptance import evaluate_acceptance
 from .artifacts import artifact_digest, verify_artifacts
 from .checkpoint import audit_checkpoints, inspect_checkpoint
 from .contracts import Stage, WorkerJob, WorkerResult
@@ -53,6 +54,7 @@ def main(argv=None):
     compare.add_argument("comparisons", type=Path, nargs="+")
     compare.add_argument("--reference-run", help="Use this run for paired error-rate differences")
     compare.add_argument("--costs", type=Path, help="Attach same-protocol candidate performance records")
+    compare.add_argument("--policy", type=Path, help="Evaluate a deployment policy against imported evidence")
     inspect = commands.add_parser("inspect", help="Inspect a local HF safetensors checkpoint")
     inspect.add_argument("snapshot", type=Path)
     inspect.add_argument("--hash-weights", action="store_true")
@@ -142,6 +144,8 @@ def main(argv=None):
             if args.command == "compare":
                 data = compare_candidates([Comparison.parse(load_json(path)) for path in args.comparisons],
                                           args.reference_run, costs=load_json(args.costs) if args.costs else None)
+                if args.policy:
+                    data["acceptance"] = evaluate_acceptance(data, load_json(args.policy))
             elif args.command == "inspect":
                 data = inspect_checkpoint(args.snapshot, hash_weights=args.hash_weights)
             elif args.command == "audit-checkpoints":

@@ -54,7 +54,16 @@ def main():
             )
         },
     }
+    costs["runs"][original["baseline"]["id"]] = {
+        "rtf_p95": 0.20, "peak_memory_bytes": 1850 * 1048576, "artifact_bytes": 950 * 1048576,
+    }
     (args.output / "costs.json").write_text(json.dumps(costs, indent=2) + "\n")
+    policy = {key: costs[key] for key in ("schema_version", "protocol_id", "environment_id",
+                                          "evaluation_dataset_sha256", "request_document_sha256")}
+    policy.update(policy_id="fixture-asr-gate", quality={"cer": 1.0, "wer": 1.0},
+                  min_common_samples=20, min_coverage=0.95, max_empty_increase_pp=0.5,
+                  max_unavailable_rate=0.0, max_rtf_increase_pct=5.0, min_resource_savings_pct=10.0)
+    (args.output / "policy.json").write_text(json.dumps(policy, indent=2) + "\n")
 
 
 if __name__ == "__main__":

@@ -45,8 +45,9 @@ def compare_performance(report, data):
 
     measurements = data.get("runs")
     require(isinstance(measurements, dict), "performance requires a runs object")
-    require(measurements.keys() <= {run["id"] for run in report["candidates"]},
-            "performance contains run IDs outside the candidate comparison")
+    require(measurements.keys() <= {run["id"] for run in report["candidates"]} | {baseline["id"]},
+            "performance contains run IDs outside the comparison")
+    baseline_values = read_measurements(measurements.get(baseline["id"], {}))
     scores = report["metrics"]
     languages = [name for name, metric in scores.items() if metric["eligible_samples"]]
     missing_quality = [name for name in languages if not scores[name]["common_samples"]]
@@ -81,5 +82,6 @@ def compare_performance(report, data):
             rows[run_id]["frontier"] = "dominated" if dominators else "non_dominated"
             rows[run_id]["dominated_by"] = dominators
     return {"protocol_id": data["protocol_id"], "status": status, "complete_candidates": len(vectors),
+            "baseline_measurements": baseline_values,
             "objectives": objectives,
             "missing_quality": missing_quality, "runs": rows}

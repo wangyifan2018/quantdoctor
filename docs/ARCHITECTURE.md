@@ -33,7 +33,7 @@ flowchart LR
 
 1. **分诊**。同音频与解码条件先配对，核对失败发生在 build、推理、生成停止还是清理。只有最终空文本时显示缺证据。报告 EOS 时把「观察到停止」与「精度导致停止」分别呈现。只有真实生成 token 命中有效结束 ID 才标首步 EOS。相同前缀下才比较 token 分差。
 2. **介入**。如果有效精度是 NVFP4 LLM + FP8 Audio，先仅恢复 Audio 到 FP16。如果 Audio 已为 FP16 且 Head 量化，先仅恢复 Head。两者均为 FP16 时，用同板 FP8 Backbone 作质量对照，再按 Audio 输出、Decoder block、QKV/MLP 投影组排查。对 Torch 模拟已经退化和仅板端退化的案例分别保留证据。 [NVIDIA ASR 精度组合](https://nvidia.github.io/TensorRT-Edge-LLM/user_guide/examples/asr.html#supported-precision-combinations)
-3. **因果与验收**。保存母候选、单变量变更、未变配置和构建产物摘要。先用原失败样本与正常对照确认方向，再用冻结留出集和同板重复测量判断是否通过。判断依据是任务恢复、空转写、CER/WER 与 RTF、内存、engine 大小。激活误差和 MSE 作为排查线索。
+3. **因果与验收**。保存母候选、单变量变更、未变配置和构建产物摘要。先用原失败样本与正常对照确认方向，再用冻结留出集和同板重复测量判断是否通过。通过 [可重放规则](ACCEPTANCE.md)复核任务恢复、空转写、CER/WER、RTF、内存和产物大小。激活误差和 MSE 作为排查线索。
 4. **QAT**。PTQ 与混精恢复达不到目标时才启动。固定目标量化配方、校准和评测，单独切换训练步骤。使用不重叠的校准、训练与留出集。当前 Worker 支持精确 FQN 选择、ModelOpt fake quant、转写 token CE 与 packed checkpoint 出包代码。训练损失与部署验收分开。设备阶段首先验证一层投影能反传、能打包、能构建并推理，然后对比同配方 PTQ 与 QAT。
 
 ## 设备接口与证据状态

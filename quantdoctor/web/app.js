@@ -354,6 +354,39 @@ function showCandidatePerformance(data) {
   byId("candidate-performance").hidden = false;
 }
 
+function showAcceptance(data) {
+  const policy = data.acceptance;
+  const statuses = {meets_policy: "满足导入规则", outside_policy: "未达到规则", insufficient_evidence: "证据不足"};
+  const checks = {meets: "满足", fails: "未达", insufficient: "待补证"};
+  const labels = {
+    cer_increase_pp: ["CER 增量", " 个百分点"], wer_increase_pp: ["WER 增量", " 个百分点"],
+    empty_increase_pp: ["空转写增量", " 个百分点"], unavailable_rate: ["失败或缺失率", "%"],
+    rtf_increase_pct: ["RTF P95 增量", "%"], resource_savings_pct: ["内存或产物节省", "%"],
+    input_integrity: ["输入一致性", ""], precision_evidence: ["精度证据", ""],
+  };
+  text("acceptance-policy", "规则 " + policy.policy_id + " · " + sources[policy.source] + " · 板端部署待独立验证");
+  for (const candidate of policy.candidates) {
+    const panel = document.createElement("details");
+    const heading = document.createElement("summary");
+    heading.textContent = candidate.run_id + " · " + statuses[candidate.status];
+    panel.append(heading);
+    for (const check of candidate.checks) {
+      const row = document.createElement("p");
+      const [label, unit] = labels[check.code];
+      const format = value => value == null ? "缺失"
+        : (check.code === "unavailable_rate" ? value * 100 : value).toFixed(2) + unit;
+      row.textContent = label + " · " + checks[check.status]
+        + " · 观测 " + format(check.observed)
+        + (check.limit == null ? "" : (check.code === "resource_savings_pct" ? " · 至少 " : " · 至多 ") + format(check.limit))
+        + (check.interval_95 ? " · 95% [" + check.interval_95.map(format).join(", ") + "]" : "")
+        + (check.reason ? " · " + check.reason : "");
+      panel.append(row);
+    }
+    byId("acceptance-candidates").append(panel);
+  }
+  byId("candidate-acceptance").hidden = false;
+}
+
 function showCandidates(data) {
   const create = (tag, value, className) => {
     const element = document.createElement(tag);
@@ -449,6 +482,7 @@ function showCandidates(data) {
     byId("candidate-metrics").append(card);
   }
   if (data.performance) showCandidatePerformance(data);
+  if (data.acceptance) showAcceptance(data);
   const picker = byId("candidate-sample");
   for (const sample of data.samples) picker.add(new Option(sample.id));
   const rows = new Map(data.samples.map(sample => [sample.id, sample]));
