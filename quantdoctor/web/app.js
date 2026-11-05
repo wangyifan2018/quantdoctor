@@ -256,6 +256,58 @@ function showCheckpoint(data) {
   byId("checkpoint").hidden = false;
 }
 
+function showCandidatePerformance(data) {
+  const performance = data.performance;
+  const fields = {
+    cer: ["CER", percentage],
+    wer: ["WER", percentage],
+    unavailable: ["失败或缺失", String],
+    empty: ["空转写", String],
+    rtf_p95: ["RTF P95", value => value.toFixed(3)],
+    peak_memory_bytes: ["峰值内存", value => (value / 1048576).toFixed(1) + " MiB"],
+    artifact_bytes: ["产物大小", value => (value / 1048576).toFixed(1) + " MiB"],
+  };
+  const columns = [...performance.objectives, "artifact_bytes"];
+  const notes = {
+    compared: "仅在 " + performance.complete_candidates + " 个记录完整的候选间比较点估计。另一个方案各项目标均不差且至少一项更好时，标为被支配。",
+    insufficient_complete_costs: "至少需要两份同时包含 RTF P95 和峰值内存的记录才判断前沿。",
+    insufficient_common_quality: "共同质量数据不足，暂不判断前沿。",
+  };
+  text("performance-note", "协议 " + performance.protocol_id + " · " + notes[performance.status]
+    + " 产物大小单列。");
+  const table = byId("performance-table");
+  const headings = table.createTHead().insertRow();
+  for (const label of ["候选", ...columns.map(key => fields[key][0]), "前沿状态"]) {
+    const cell = document.createElement("th");
+    cell.scope = "col";
+    cell.textContent = label;
+    headings.append(cell);
+  }
+  const tbody = table.createTBody();
+  for (const candidate of data.candidates) {
+    const entry = performance.runs[candidate.id];
+    const row = tbody.insertRow();
+    const heading = document.createElement("th");
+    heading.scope = "row";
+    heading.textContent = candidate.id;
+    row.append(heading);
+    for (const key of columns) {
+      const value = entry.values[key];
+      row.insertCell().textContent = value == null ? "未测或不可比" : fields[key][1](value);
+    }
+    const state = row.insertCell();
+    if (entry.frontier === "non_dominated") {
+      state.textContent = "非支配";
+      state.className = "performance-frontier";
+    } else if (entry.frontier === "dominated") {
+      state.textContent = "被 " + entry.dominated_by.join("、") + " 支配";
+    } else {
+      state.textContent = entry.missing_costs.length ? "缺性能记录" : "待评估";
+    }
+  }
+  byId("candidate-performance").hidden = false;
+}
+
 function showCandidates(data) {
   const create = (tag, value, className) => {
     const element = document.createElement(tag);
@@ -311,6 +363,7 @@ function showCandidates(data) {
     }
     byId("candidate-metrics").append(card);
   }
+  if (data.performance) showCandidatePerformance(data);
   const picker = byId("candidate-sample");
   for (const sample of data.samples) picker.add(new Option(sample.id));
   const rows = new Map(data.samples.map(sample => [sample.id, sample]));

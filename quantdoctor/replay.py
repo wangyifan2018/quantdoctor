@@ -1,11 +1,11 @@
 """Controlled comparison of an original run and one precision intervention."""
 
 from dataclasses import asdict, replace
-import math
 
 from .checkpoint import audit_checkpoints
 from .diagnostics import classify, edit_distance, evaluate, tokens, work_order
 from .model import Comparison, Sample, nonempty, require
+from .performance import MEASUREMENTS, read_measurements
 from .trace import compare_steps
 
 
@@ -79,18 +79,10 @@ def _compare_costs(data, before, after):
         entry = data.get(side)
         require(isinstance(entry, dict) and entry.get("run_id") == run.id,
                 f"costs {side} run ID does not match")
-        runs[side] = entry
+        runs[side] = read_measurements(entry)
     measurements = {}
-    for key in ("rtf_p95", "peak_memory_bytes", "artifact_bytes"):
+    for key in MEASUREMENTS:
         original, repaired = (runs[side].get(key) for side in ("original", "repaired"))
-        for value in (original, repaired):
-            if value is None:
-                continue
-            if key.endswith("_bytes"):
-                require(type(value) is int and 0 <= value <= 2**63 - 1, f"invalid costs {key}")
-            else:
-                require(type(value) in (int, float) and 0 <= value <= 1e9 and math.isfinite(value),
-                        f"invalid costs {key}")
         if original is not None and repaired is not None:
             measurements[key] = {"original": original, "repaired": repaired, "delta": repaired - original}
     return {"protocol_id": data["protocol_id"], "measurements": measurements}

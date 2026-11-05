@@ -50,6 +50,7 @@ def main(argv=None):
     compare = commands.add_parser("compare", help="Compare candidates on a shared ASR cohort")
     compare.add_argument("comparisons", type=Path, nargs="+")
     compare.add_argument("--reference-run", help="Use this run for paired error-rate differences")
+    compare.add_argument("--costs", type=Path, help="Attach same-protocol candidate performance records")
     inspect = commands.add_parser("inspect", help="Inspect a local HF safetensors checkpoint")
     inspect.add_argument("snapshot", type=Path)
     inspect.add_argument("--hash-weights", action="store_true")
@@ -116,7 +117,7 @@ def main(argv=None):
         if args.command in {"compare", "inspect", "audit-checkpoints"}:
             if args.command == "compare":
                 data = compare_candidates([Comparison.parse(load_json(path)) for path in args.comparisons],
-                                          args.reference_run)
+                                          args.reference_run, costs=load_json(args.costs) if args.costs else None)
             elif args.command == "inspect":
                 data = inspect_checkpoint(args.snapshot, hash_weights=args.hash_weights)
             else:

@@ -6,6 +6,7 @@ from random import Random
 
 from .diagnostics import classify, edit_distance, tokens
 from .model import require
+from .performance import compare_performance
 
 UNAVAILABLE = {"missing", "failed"}
 MIN_INTERVAL_SAMPLES = 10
@@ -89,7 +90,7 @@ def _measure(rows, candidate_ids, eligible_count, reference_index):
     }
 
 
-def compare_candidates(comparisons, reference_run_id=None):
+def compare_candidates(comparisons, reference_run_id=None, *, costs=None):
     _validate(comparisons)
     first = comparisons[0]
     indices = [{row.id: row for row in comparison.samples} for comparison in comparisons]
@@ -124,7 +125,7 @@ def compare_candidates(comparisons, reference_run_id=None):
             "candidates": {run_id: {"status": state, "text": output.text if output else None}
                            for run_id, state, output in zip(candidate_ids, states, candidates, strict=True)},
         })
-    return {
+    report = {
         "schema_version": 1, "kind": "candidate_comparison", "model": first.model,
         "baseline": asdict(first.baseline),
         "reference_run_id": reference_run_id,
@@ -138,3 +139,6 @@ def compare_candidates(comparisons, reference_run_id=None):
                     for key, rows in contributions.items()},
         "samples": samples,
     }
+    if costs is not None:
+        report["performance"] = compare_performance(report, costs)
+    return report

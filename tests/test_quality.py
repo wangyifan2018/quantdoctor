@@ -56,3 +56,33 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(repaired["delta_vs_reference"], 0.5)
         with self.assertRaisesRegex(ValueError, "reference run"):
             compare_candidates(runs, "unknown")
+
+    def test_performance_preserves_tradeoffs_and_ignores_unmeasured_candidates(self):
+        extra = deepcopy(self.original)
+        extra["candidate"]["id"] = "same-outputs-slower"
+        runs = [Comparison.parse(run) for run in (self.original, self.repaired, extra)]
+        costs = {
+            "schema_version": 1, "protocol_id": "fixture", "source": "fixture",
+            "environment_id": runs[0].baseline.environment_id,
+            "evaluation_dataset_sha256": runs[0].evaluation_dataset_sha256,
+            "request_document_sha256": runs[0].request_document_sha256,
+            "runs": {
+                run.candidate.id: {"rtf_p95": rtf, "peak_memory_bytes": memory}
+                for run, rtf, memory in zip(runs, (0.2, 0.3, 0.4), (100, 100, 200), strict=True)
+            },
+        }
+        report = compare_candidates(runs, costs=costs)["performance"]
+        original, repaired, slower = (report["runs"][run.candidate.id] for run in runs)
+        self.assertEqual(original["frontier"], "non_dominated")
+        self.assertEqual(repaired["frontier"], "non_dominated")
+        self.assertEqual(slower["dominated_by"], [runs[0].candidate.id])
+        costs["runs"][extra["candidate"]["id"]].pop("peak_memory_bytes")
+        report = compare_candidates(runs, costs=costs)["performance"]
+        self.assertEqual(report["runs"][extra["candidate"]["id"]]["missing_costs"], ["peak_memory_bytes"])
+        self.assertEqual(report["runs"][extra["candidate"]["id"]]["frontier"], "not_assessed")
+        costs["runs"][runs[1].candidate.id].pop("rtf_p95")
+        self.assertEqual(compare_candidates(runs, costs=costs)["performance"]["status"],
+                         "insufficient_complete_costs")
+        costs["source"] = "target"
+        with self.assertRaisesRegex(ValueError, "performance source"):
+            compare_candidates(runs, costs=costs)

@@ -37,6 +37,20 @@ def main():
         for field in ("evaluation_dataset_sha256", "request_document_sha256"):
             run[field] = sha256(("synthetic-quality-v1:" + field).encode()).hexdigest()
         (args.output / f"{name}.json").write_text(json.dumps(run, ensure_ascii=False, indent=2) + "\n")
+    costs = {
+        "schema_version": 1, "protocol_id": "synthetic-warmup-then-repeat",
+        "source": "fixture", "environment_id": original["baseline"]["environment_id"],
+        "evaluation_dataset_sha256": original["evaluation_dataset_sha256"],
+        "request_document_sha256": original["request_document_sha256"],
+        "runs": {
+            run["candidate"]["id"]: {"rtf_p95": rtf, "peak_memory_bytes": memory * 1048576,
+                                      "artifact_bytes": size * 1048576}
+            for run, rtf, memory, size in (
+                (original, 0.19, 1440, 550), (repaired, 0.22, 1520, 630), (fp8, 0.21, 1680, 760)
+            )
+        },
+    }
+    (args.output / "costs.json").write_text(json.dumps(costs, indent=2) + "\n")
 
 
 if __name__ == "__main__":

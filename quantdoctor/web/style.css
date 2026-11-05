@@ -47,6 +47,11 @@ button, select { font: inherit; color: inherit; background: var(--surface); bord
 .margin-value { font-variant-numeric: tabular-nums; text-align: right; }
 .interval-row { display: grid; grid-template-columns: minmax(100px,1.2fr) minmax(95px,1.4fr) minmax(140px,1fr); align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .interval-row strong { overflow-wrap: anywhere; }
+.performance-table { overflow-x: auto; }
+.performance-table table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.performance-table :is(th, td) { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--line); }
+.performance-table tbody th { min-width: 110px; overflow-wrap: anywhere; }
+.performance-frontier { color: var(--accent); font-weight: 650; }
 .interval-track { height: 18px; background: var(--page); }
 .interval-track .interval-band { top: 7px; height: 4px; }
 .interval-track .interval-point { top: 4px; height: 10px; width: 6px; transform: translateX(-50%); }
