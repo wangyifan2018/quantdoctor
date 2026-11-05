@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 import unicodedata
 
 from .model import Comparison, Output, Sample
+from .trace import compare_steps
 
 ASR_MODEL = "Qwen/Qwen3-ASR-0.6B"
 ERRORS = {"error", "cancelled", "not-finished"}
@@ -162,7 +163,11 @@ def report(comparison: Comparison):
         "baseline": asdict(comparison.baseline),
         "candidate": asdict(comparison.candidate),
         "samples": [
-            {**asdict(row), "finding": asdict(diagnose(comparison, row))}
+            {**asdict(row), "finding": asdict(diagnose(comparison, row)), "decode_evidence": compare_steps(
+                row.baseline.trace if row.baseline else (),
+                row.candidate.trace if row.candidate else (),
+                comparable and bool(comparison.request_document_sha256),
+            )}
             for row in comparison.samples
         ],
         "metrics": evaluate(comparison) if comparable else {},

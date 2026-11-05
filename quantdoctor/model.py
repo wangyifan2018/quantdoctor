@@ -5,6 +5,10 @@ from hashlib import file_digest
 import json
 from pathlib import Path
 import re
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .trace import DecodeStep
 
 
 SHA256 = re.compile(r"[a-f0-9]{64}")
@@ -68,6 +72,7 @@ class Output:
     generated_count: int | None
     first_token_id: int | None
     stop_token_ids: list[int] | None
+    trace: tuple["DecodeStep", ...] = ()
 
     @classmethod
     def parse(cls, data):
@@ -81,7 +86,17 @@ class Output:
             require(value is None or type(value) is int and value >= 0, f"invalid {key}")
         require(data.get("stop_token_ids") is None or valid_ids(data["stop_token_ids"]),
                 "invalid stop_token_ids")
-        return cls(*(data.get(key) for key in cls.__dataclass_fields__))
+        from .trace import parse_steps
+
+        trace = parse_steps(data.get("trace", ()))
+        count, first_id, stop_ids = (data.get(key) for key in ("generated_count", "first_token_id", "stop_token_ids"))
+        require(count is None or not trace or trace[-1].step < count, "decode step exceeds generated token count")
+        if trace and trace[0].step == 0:
+            first = trace[0]
+            require(first_id is None or first_id == first.selected_id, "first token contradicts decode trace")
+            require(stop_ids is None or set(stop_ids) == set(first.stop_ids), "stop IDs contradict decode trace")
+            first_id, stop_ids = first.selected_id, list(first.stop_ids)
+        return cls(data["text"], data.get("raw_text"), data.get("finish_reason"), count, first_id, stop_ids, trace)
 
 
 @dataclass(frozen=True)

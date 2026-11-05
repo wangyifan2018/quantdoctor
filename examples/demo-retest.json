@@ -33,12 +33,56 @@
       "reference": "打开右侧车窗。",
       "language": "zh",
       "baseline": {
-        "text": "打开右侧车窗。"
+        "text": "打开右侧车窗。",
+        "trace": [
+          {
+            "step": 0,
+            "context_sha256": "1b05782829827df395cdc2b1b5b409c5cf0b67dd856b03abdc4adcdccf850ac4",
+            "score_stage": "processed_logits",
+            "selected_id": 101,
+            "top1_id": 101,
+            "stop_ids": [
+              23
+            ],
+            "scores": [
+              {
+                "id": 101,
+                "logit": 5.4
+              },
+              {
+                "id": 23,
+                "logit": 4.0
+              }
+            ]
+          }
+        ]
       },
       "candidate": {
         "text": "打开右侧车窗。",
         "finish_reason": "end-of-sequence",
-        "generated_count": 8
+        "generated_count": 8,
+        "trace": [
+          {
+            "step": 0,
+            "context_sha256": "1b05782829827df395cdc2b1b5b409c5cf0b67dd856b03abdc4adcdccf850ac4",
+            "score_stage": "processed_logits",
+            "selected_id": 101,
+            "top1_id": 101,
+            "stop_ids": [
+              23
+            ],
+            "scores": [
+              {
+                "id": 101,
+                "logit": 5.1
+              },
+              {
+                "id": 23,
+                "logit": 4.0
+              }
+            ]
+          }
+        ]
       }
     },
     {

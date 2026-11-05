@@ -37,6 +37,14 @@ button, select { font: inherit; color: inherit; background: var(--surface); bord
 .replay-counts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }
 .replay-counts span { padding: 3px 7px; background: var(--active); border-radius: 5px; font-variant-numeric: tabular-nums; }
 .transition { margin-top: 10px; color: var(--accent); }
+#step-control { font-size: 13px; }
+.decode-row { display: grid; grid-template-columns: minmax(64px, 1fr) minmax(72px, 2fr) minmax(52px, auto); gap: 6px; align-items: center; margin: 5px 0; }
+.decode-row .muted { grid-column: 1 / -1; margin: 0; }
+.margin-track { position: relative; background: var(--surface); height: 12px; border-radius: 4px; }
+.margin-track::after { content: ""; position: absolute; left: 50%; height: 100%; border-left: 1px solid var(--muted); }
+.margin-track span { position: absolute; height: 100%; background: var(--accent); border-radius: 4px; }
+.margin-track .negative { background: light-dark(#a44018, #ffac81); }
+.margin-value { font-variant-numeric: tabular-nums; text-align: right; }
 .pair section, .finding, details { padding: 12px; border-radius: 8px; background: var(--page); border: 1px solid var(--line); }
 .finding, details { margin-top: 10px; }
 pre { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }

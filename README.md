@@ -38,6 +38,8 @@ python3 -m quantdoctor serve comparison.json
 
 把同一个 FP16 基线与修复前后两次候选放在一起，可以查看恢复文本、新增空转写、三组共同样本的 CER/WER 和可选性能代价。运行前检查数据、请求和精度变化是否符合原工单。见 [修复复验命令与演示](docs/REPLAY.md)。
 
+有逐步解码记录时，工作台展示实际选择、Top-1 和可比的 EOS 分差。见 [解码证据导入合同](docs/DECODE_EVIDENCE.md)。
+
 ## 选择性 QAT
 
 本机生成并校验配方。

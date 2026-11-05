@@ -51,6 +51,7 @@ class DiagnosisTests(unittest.TestCase):
         row = self.bundle["samples"][0]["candidate"]
         row.pop("first_token_id")
         row.pop("stop_token_ids")
+        row.pop("trace")
         self.bundle["candidate"]["precision"].update(audio="fp16", head="nvfp4")
         finding = self.report()["samples"][0]["finding"]
         self.assertEqual(finding["code"], "eos_unlocated")

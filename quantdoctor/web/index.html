@@ -47,6 +47,14 @@
           <section class="finding">
             <h3 id="finding-title"></h3><p id="evidence"></p><p id="attribution" class="muted"></p>
           </section>
+          <section class="finding" aria-labelledby="decode-title">
+            <div class="replay-heading">
+              <h3 id="decode-title">生成证据</h3>
+              <label id="step-control" hidden>生成步 <select id="decode-step"></select></label>
+            </div>
+            <p id="decode-note" class="muted"></p>
+            <div id="decode-chart" aria-live="polite"></div>
+          </section>
           <details id="intervention">
             <summary>查看单变量修复工单</summary>
             <p id="action"></p>

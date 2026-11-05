@@ -5,6 +5,7 @@ import math
 
 from .diagnostics import classify, edit_distance, evaluate, tokens, work_order
 from .model import Comparison, Sample, nonempty, require
+from .trace import compare_steps
 
 
 def _controls(before: Comparison, after: Comparison, order):
@@ -122,6 +123,10 @@ def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=N
             "transition": transition,
             "output": asdict(repaired.candidate) if repaired.candidate is not None else None,
             "edits": edits,
+            "decode_evidence": compare_steps(
+                original.baseline.trace if original.baseline else (),
+                repaired.candidate.trace if repaired.candidate else (),
+            ),
         }
 
     return {

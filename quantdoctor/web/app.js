@@ -11,6 +11,15 @@ const transitions = {
   original_unavailable: "原始结果不可用",
 };
 const percentage = (value) => (value * 100).toFixed(1) + "%";
+const alignmentLabels = {
+  aligned: "已对齐",
+  missing_step: "缺少另一侧的生成步",
+  run_mismatch: "缺少匹配的运行条件或请求摘要",
+  context_mismatch: "输入或生成前缀不同",
+  score_stage_mismatch: "分数采集阶段不同",
+  stop_set_mismatch: "有效停止 ID 不同",
+  missing_scores: "未采集参考或全部停止 token 的分数，或基线已停止",
+};
 
 function text(id, value) {
   byId(id).textContent = value;
@@ -63,6 +72,84 @@ function showReplay(replay, original) {
   byId("transcripts").classList.add("with-repair");
 }
 
+function showDecodeEvidence(original, repaired = []) {
+  const picker = byId("decode-step");
+  const chart = byId("decode-chart");
+  const source = new Map(original.map(row => [row.step, row]));
+  const repair = new Map(repaired.map(row => [row.step, row]));
+  const steps = [...new Set([...source.keys(), ...repair.keys()])].sort((a, b) => a - b);
+  picker.replaceChildren();
+  chart.replaceChildren();
+  byId("step-control").hidden = steps.length < 2;
+  if (!steps.length) {
+    text("decode-note", "未采集 token 分数。可以导入与运行及请求匹配的解码证据。");
+    picker.onchange = null;
+    return;
+  }
+  for (const step of steps) picker.add(new Option(String(step), String(step)));
+  picker.value = String(original.find(row => row.selected_changed)?.step ?? steps[0]);
+
+  function render() {
+    chart.replaceChildren();
+    const step = Number(picker.value);
+    const pair = source.get(step);
+    const fixed = repair.get(step);
+    const anchor = pair?.status === "aligned" ? pair : fixed;
+    const sameStage = pair?.status !== "aligned" || pair.score_stage === fixed?.score_stage;
+    const repairedMargin = sameStage ? fixed?.candidate_margin : null;
+    const stage = anchor?.score_stage === "raw_logits" ? "原始 logits" : "规则处理后 logits";
+    text("decode-note", anchor?.status === "aligned"
+      ? "生成步 " + step + " · " + stage + " · 分差 = 基线选中的 token #" + anchor.reference_id
+        + " 分数 − 最高有效停止分数。中线为零。"
+      : "生成步 " + step + " · 分差不可比。下方保留已观察到的 token 选择。");
+    const rows = [
+      ["基线", anchor?.baseline_margin, pair?.baseline_selected ?? fixed?.baseline_selected,
+        pair?.baseline_top1 ?? fixed?.baseline_top1, anchor?.status],
+      ["原候选", pair?.candidate_margin, pair?.candidate_selected, pair?.candidate_top1, pair?.status],
+    ];
+    if (repaired.length) rows.push(["修复后", repairedMargin, fixed?.candidate_selected, fixed?.candidate_top1,
+      sameStage ? fixed?.status : "score_stage_mismatch"]);
+    const extent = Math.max(1, ...rows.map(row => Math.abs(row[1] ?? 0)));
+    for (const [label, margin, selected, top1, status] of rows) {
+      const container = document.createElement("div");
+      container.className = "decode-row";
+      const name = document.createElement("strong");
+      name.textContent = label;
+      const track = document.createElement("div");
+      track.className = "margin-track";
+      track.setAttribute("aria-hidden", "true");
+      const value = document.createElement("span");
+      value.className = "margin-value";
+      value.textContent = margin == null ? "—" : (margin > 0 ? "+" : "") + margin.toFixed(3);
+      if (margin != null) {
+        const bar = document.createElement("span");
+        const width = Math.abs(margin) / extent * 50;
+        bar.style.width = width + "%";
+        bar.style.left = (margin < 0 ? 50 - width : 50) + "%";
+        if (margin < 0) bar.className = "negative";
+        track.append(bar);
+      }
+      const detail = document.createElement("p");
+      detail.className = "muted";
+      detail.textContent = (selected == null ? "选择未采集" : "选择 #" + selected)
+        + (top1 == null ? "" : " · Top-1 #" + top1)
+        + (status && status !== "aligned" ? " · " + alignmentLabels[status] : "");
+      container.append(name, track, value, detail);
+      chart.append(container);
+    }
+    if (pair?.status === "aligned" && pair.baseline_margin > 0 && pair.candidate_margin < 0
+        && pair.candidate_stopped) {
+      const detail = document.createElement("p");
+      detail.className = "transition";
+      detail.textContent = "结束符超过基线参考 token，且原候选选中了停止 ID。可结合单变量复验判断这项变化是否与空转写有关。";
+      chart.append(detail);
+    }
+  }
+
+  picker.onchange = render;
+  render();
+}
+
 function setup(data) {
   const { baseline, candidate, replay } = data;
   const replayRows = new Map(Object.entries(replay?.samples ?? {}));
@@ -99,6 +186,7 @@ function setup(data) {
     text("reference", sample.reference == null ? "参考文本未提供" : "参考 " + sample.reference);
     result("baseline", sample.baseline, baseline);
     result("candidate", sample.candidate, candidate);
+    showDecodeEvidence(sample.decode_evidence, replayRows.get(sample.id)?.decode_evidence);
     if (replay) {
       const row = replayRows.get(sample.id);
       result("repaired", row.output, replay.repair_run);

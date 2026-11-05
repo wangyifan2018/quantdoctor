@@ -38,6 +38,8 @@ def main(argv=None):
     importer = commands.add_parser("import-edge", help="Pair two llm_inference result files")
     for name in ("manifest", "baseline", "candidate"):
         importer.add_argument(name, type=Path)
+    importer.add_argument("--baseline-trace", type=Path)
+    importer.add_argument("--candidate-trace", type=Path)
     importer.add_argument("-o", "--output", type=Path)
     planner = commands.add_parser("plan", help="Export a single-variable work order for a sample")
     planner.add_argument("comparison", type=Path)
@@ -87,7 +89,11 @@ def main(argv=None):
                 stage.rename(output)
             print(output)
         elif args.command == "import-edge":
-            bundle = import_edge(*(load_json(path) for path in (args.manifest, args.baseline, args.candidate)))
+            bundle = import_edge(
+                *(load_json(path) for path in (args.manifest, args.baseline, args.candidate)),
+                baseline_trace=load_json(args.baseline_trace) if args.baseline_trace else None,
+                candidate_trace=load_json(args.candidate_trace) if args.candidate_trace else None,
+            )
             Comparison.parse(bundle)
             emit(bundle, args.output)
         elif args.command == "plan":

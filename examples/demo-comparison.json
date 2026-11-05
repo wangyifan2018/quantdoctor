@@ -7,7 +7,12 @@
     "model_revision": "demo-revision",
     "environment_id": "demo-thor",
     "request_settings_id": "demo-greedy",
-    "precision": {"backbone": "fp16", "audio": "fp16", "head": "fp16", "kv": "fp16"}
+    "precision": {
+      "backbone": "fp16",
+      "audio": "fp16",
+      "head": "fp16",
+      "kv": "fp16"
+    }
   },
   "candidate": {
     "id": "nvfp4-demo",
@@ -15,7 +20,12 @@
     "model_revision": "demo-revision",
     "environment_id": "demo-thor",
     "request_settings_id": "demo-greedy",
-    "precision": {"backbone": "nvfp4", "audio": "fp8", "head": "fp16", "kv": "fp16"}
+    "precision": {
+      "backbone": "nvfp4",
+      "audio": "fp8",
+      "head": "fp16",
+      "kv": "fp16"
+    }
   },
   "evaluation_dataset_sha256": "3510c36ff3d8d362a01184ad32b68ad588466e022fda5ec79f0763a4d115d5e8",
   "request_document_sha256": "f179eabf4c005afd92a836d144a0bb01f1d43ef77c72b811044ef794e322b78b",
@@ -24,41 +34,107 @@
       "id": "ASR-014",
       "reference": "打开右侧车窗。",
       "language": "zh",
-      "baseline": {"text": "打开右侧车窗。"},
+      "baseline": {
+        "text": "打开右侧车窗。",
+        "trace": [
+          {
+            "step": 0,
+            "context_sha256": "1b05782829827df395cdc2b1b5b409c5cf0b67dd856b03abdc4adcdccf850ac4",
+            "score_stage": "processed_logits",
+            "selected_id": 101,
+            "top1_id": 101,
+            "stop_ids": [
+              23
+            ],
+            "scores": [
+              {
+                "id": 101,
+                "logit": 5.4
+              },
+              {
+                "id": 23,
+                "logit": 4.0
+              }
+            ]
+          }
+        ]
+      },
       "candidate": {
         "text": "",
         "finish_reason": "end-of-sequence",
         "generated_count": 1,
         "first_token_id": 23,
-        "stop_token_ids": [23]
+        "stop_token_ids": [
+          23
+        ],
+        "trace": [
+          {
+            "step": 0,
+            "context_sha256": "1b05782829827df395cdc2b1b5b409c5cf0b67dd856b03abdc4adcdccf850ac4",
+            "score_stage": "processed_logits",
+            "selected_id": 23,
+            "top1_id": 23,
+            "stop_ids": [
+              23
+            ],
+            "scores": [
+              {
+                "id": 101,
+                "logit": 3.2
+              },
+              {
+                "id": 23,
+                "logit": 4.0
+              }
+            ]
+          }
+        ]
       }
     },
     {
       "id": "ASR-027",
       "reference": "关闭空调。",
       "language": "zh",
-      "baseline": {"text": "关闭空调。"},
-      "candidate": {"text": "", "raw_text": "关闭空调。", "finish_reason": "end-of-sequence"}
+      "baseline": {
+        "text": "关闭空调。"
+      },
+      "candidate": {
+        "text": "",
+        "raw_text": "关闭空调。",
+        "finish_reason": "end-of-sequence"
+      }
     },
     {
       "id": "ASR-039",
       "reference": "向前行驶。",
       "language": "zh",
-      "baseline": {"text": "向前行驶。"},
-      "candidate": {"text": ""}
+      "baseline": {
+        "text": "向前行驶。"
+      },
+      "candidate": {
+        "text": ""
+      }
     },
     {
       "id": "ASR-042",
       "reference": "Turn right.",
       "language": "en",
-      "baseline": {"text": "Turn right."},
-      "candidate": {"text": "Turn left.", "finish_reason": "end-of-sequence", "generated_count": 4}
+      "baseline": {
+        "text": "Turn right."
+      },
+      "candidate": {
+        "text": "Turn left.",
+        "finish_reason": "end-of-sequence",
+        "generated_count": 4
+      }
     },
     {
       "id": "ASR-056",
       "reference": "Turn left.",
       "language": "en",
-      "baseline": {"text": "Turn left."},
+      "baseline": {
+        "text": "Turn left."
+      },
       "candidate": null
     }
   ]
