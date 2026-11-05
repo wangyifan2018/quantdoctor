@@ -55,6 +55,7 @@ def import_edge(manifest, baseline, candidate, *, baseline_trace=None, candidate
         rows.append({
             "id": row.get("id"), "reference": row.get("reference"), "language": row.get("language"),
             "audio_sha256": row.get("audio_sha256"),
+            "speaker_id": row.get("speaker_id"),
             "baseline": baseline_by_index.get(index), "candidate": candidate_by_index.get(index),
         })
     require(not (baseline_by_index.keys() | candidate_by_index.keys()) - indices,

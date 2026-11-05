@@ -125,9 +125,9 @@ def verify_repair(before: Comparison, after: Comparison, sample_id: str, costs=N
                                   "repair_missing", "repair_failed", "original_unavailable", "input_mismatch")}
     for original in before.samples:
         repaired = repaired_rows[original.id]
-        require((original.reference, original.language, original.baseline, original.audio_sha256) ==
-                (repaired.reference, repaired.language, repaired.baseline, repaired.audio_sha256),
-                f"{original.id}: reference, language, audio fingerprint or baseline output changed")
+        require((original.reference, original.language, original.speaker_id, original.baseline, original.audio_sha256) ==
+                (repaired.reference, repaired.language, repaired.speaker_id, repaired.baseline, repaired.audio_sha256),
+                f"{original.id}: reference, language, speaker, audio fingerprint or baseline output changed")
         transition = (_transition(original.candidate, repaired.candidate)
                       if audio_inputs_agree(original.baseline, original.candidate, repaired.candidate,
                                             expected=original.audio_sha256)

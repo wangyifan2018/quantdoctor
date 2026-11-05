@@ -68,8 +68,9 @@ def main(argv=None):
         destination = command.add_mutually_exclusive_group()
         destination.add_argument("-o", "--output", type=Path)
         destination.add_argument("--port", type=int, help="Open a loopback inspection workbench")
-    commands.add_parser("dataset-validate", help="Check a local ASR dataset and fingerprint each split").add_argument(
-        "dataset", type=Path)
+    dataset_check = commands.add_parser("dataset-validate", help="Check a local ASR dataset and fingerprint each split")
+    dataset_check.add_argument("dataset", type=Path)
+    dataset_check.add_argument("--require-speakers", action="store_true", help="Require a speaker ID for every sample")
     evaluation = commands.add_parser("prepare-eval", help="Export Edge ASR requests and scoring manifest")
     evaluation.add_argument("dataset", type=Path)
     evaluation.add_argument("comparison_metadata", type=Path)
@@ -151,7 +152,10 @@ def main(argv=None):
                 from .server import serve
                 serve(data, args.port)
         elif args.command == "dataset-validate":
-            emit(load_asr_dataset(args.dataset).summary())
+            dataset = load_asr_dataset(args.dataset)
+            require(not args.require_speakers or all(row.speaker_id is not None for row in dataset.samples),
+                    "speaker_id is required for every dataset sample")
+            emit(dataset.summary())
         elif args.command == "prepare-eval":
             dataset = load_asr_dataset(args.dataset)
             request, scoring = prepare_evaluation(dataset, load_json(args.comparison_metadata), args.audio_root)

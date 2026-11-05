@@ -389,6 +389,18 @@ function showCandidates(data) {
       [row.delta_vs_reference, ...(row.interval_95 ?? [])].map(Math.abs)));
     const x = value => (50 + value / extent * 48) + "%";
     card.append(create("p", "参照 " + data.reference_run_id + " · 误差率差值（百分点），中线为零，左侧表示误差更低。", "muted"));
+    const clustered = summary.bootstrap_unit === "speaker";
+    let samplingNote;
+    if (summary.interval_status === "missing_speaker_ids") {
+      samplingNote = "共同样本中仅 " + summary.common_with_speaker + " 条有说话人标记，暂停计算区间。";
+    } else if (summary.interval_status === "insufficient_units") {
+      samplingNote = "仅有 " + summary.bootstrap_units + (clustered ? " 位说话人" : " 条录音")
+        + "，低于 " + data.bootstrap.minimum_units + " 个抽样单位，未计算区间。";
+    } else {
+      samplingNote = clustered ? "按 " + summary.bootstrap_units + " 位说话人重采样，每次保留该说话人的全部样本。"
+        : "按 " + summary.bootstrap_units + " 条录音重采样。未提供说话人标记，无法检查录音间相关性。";
+    }
+    card.append(create("p", samplingNote, "muted"));
     for (const row of summary.candidates) {
       const line = create("div", null, "interval-row");
       const track = create("div", null, "margin-track interval-track");
@@ -403,10 +415,36 @@ function showCandidates(data) {
       point.style.left = x(row.delta_vs_reference);
       track.append(point);
       const interval = row.interval_95 ? " · 95% [" + row.interval_95.map(pp).join(", ") + "]"
-        : " · 样本不足，未计算区间";
+        : " · 未计算区间";
       line.append(create("strong", row.run_id), track,
         create("div", percentage(row.error_rate) + " · Δ " + pp(row.delta_vs_reference) + interval));
       card.append(line);
+    }
+    if (summary.speaker_groups.length) {
+      const details = create("details");
+      const label = create("label", "说话人 ");
+      const picker = create("select");
+      const groups = new Map(summary.speaker_groups.map(group => [group.speaker_id, group]));
+      for (const id of groups.keys()) picker.add(new Option(id));
+      label.append(picker);
+      const note = create("p", null, "muted");
+      const results = create("div");
+      function renderSpeaker() {
+        const group = groups.get(picker.value);
+        note.textContent = group.samples + " 条共同样本 · 基线 " + percentage(group.baseline_error_rate);
+        results.replaceChildren();
+        for (const run of data.candidates) {
+          const score = group.candidates[run.id];
+          const row = create("div", null, "tensor-row");
+          row.append(create("strong", run.id), create("span", percentage(score.error_rate)
+            + " · Δ " + pp(score.delta_vs_reference) + " 个百分点"));
+          results.append(row);
+        }
+      }
+      picker.addEventListener("change", renderSpeaker);
+      renderSpeaker();
+      details.append(create("summary", "查看说话人分组（" + groups.size + "）"), label, note, results);
+      card.append(details);
     }
     byId("candidate-metrics").append(card);
   }
@@ -416,7 +454,8 @@ function showCandidates(data) {
   const rows = new Map(data.samples.map(sample => [sample.id, sample]));
   function renderSample() {
     const sample = rows.get(picker.value);
-    text("candidate-reference", "参考转写 " + (sample.reference ?? "未提供"));
+    text("candidate-reference", "参考转写 " + (sample.reference ?? "未提供")
+      + (sample.speaker_id ? " · 说话人 " + sample.speaker_id : ""));
     text("candidate-cohort", sample.common_scoring ? "计入共同评分集合"
       : sample.input_mismatch ? "实际输入音频不一致，未计入共同评分集合" : "未计入共同评分集合，保留原始结果");
     const list = byId("candidate-sample-results");

@@ -6,7 +6,7 @@ import json
 from pathlib import Path, PurePosixPath
 import wave
 
-from .model import Comparison, file_sha256, load_json, nonempty, require
+from .model import Comparison, file_sha256, load_json, nonempty, parse_speaker_id, require
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,7 @@ class AudioSample:
     transcript: str
     language: str
     sha256: str
+    speaker_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -28,7 +29,8 @@ class ASRDataset:
         return tuple(row for row in self.samples if row.split == split)
 
     def digest(self, split):
-        rows = [[row.id, row.sha256, row.transcript, row.language] for row in self.select(split)]
+        rows = [[row.id, row.sha256, row.transcript, row.language, *([row.speaker_id] if row.speaker_id else [])]
+                for row in self.select(split)]
         return _digest_json({"schema_version": 1, "split": split, "samples": rows})
 
     def summary(self):
@@ -40,9 +42,19 @@ class ASRDataset:
             warnings.append("Pinned Edge-LLM ASR calibration uses an English prompt prefix even with custom transcripts.")
         if any(row.audio.suffix.lower() == ".flac" for row in calibration):
             warnings.append("FLAC sample rate and duration are checked by the device-side calibration loader.")
+        missing_speakers = sum(row.speaker_id is None for row in self.samples)
+        both_splits = bool(calibration and self.select("evaluation"))
+        if both_splits and missing_speakers:
+            warnings.append("Speaker isolation is incomplete because some samples have no speaker_id.")
         return {
-            "splits": {split: {"count": len(self.select(split)), "sha256": self.digest(split)}
-                       for split in ("calibration", "evaluation") if self.select(split)},
+            "splits": {
+                split: {"count": len(rows), "sha256": self.digest(split),
+                        "speaker_count": len({row.speaker_id for row in rows if row.speaker_id is not None}),
+                        "missing_speaker_ids": sum(row.speaker_id is None for row in rows)}
+                for split in ("calibration", "evaluation") if (rows := self.select(split))
+            },
+            "speaker_isolation": ("single_split" if not both_splits else
+                                  "incomplete" if missing_speakers else "disjoint_declared_ids"),
             "warnings": warnings,
         }
 
@@ -82,6 +94,7 @@ def load_asr_dataset(manifest: Path):
     ids = set()
     hashes = {}
     audio_splits = {}
+    speaker_splits = {}
     samples = []
     for row in rows:
         require(isinstance(row, dict) and nonempty(row.get("id")), "sample id is required")
@@ -102,7 +115,11 @@ def load_asr_dataset(manifest: Path):
         digest = hashes[resolved]
         require(audio_splits.setdefault(digest, split) == split,
                 f"{sample_id}: identical audio is present in both calibration and evaluation")
-        samples.append(AudioSample(sample_id, split, path, transcript.strip(), language, digest))
+        speaker = parse_speaker_id(row.get("speaker_id"))
+        if speaker is not None:
+            require(speaker_splits.setdefault(speaker, split) == split,
+                    f"{sample_id}: speaker {speaker!r} is present in both calibration and evaluation")
+        samples.append(AudioSample(sample_id, split, path, transcript.strip(), language, digest, speaker))
     return ASRDataset(root, tuple(samples))
 
 
@@ -139,6 +156,8 @@ def prepare_evaluation(dataset: ASRDataset, metadata, audio_root: PurePosixPath 
         ]})
         index.append({"id": sample.id, "request_idx": offset,
                       "reference": sample.transcript, "language": sample.language, "audio_sha256": sample.sha256})
+        if sample.speaker_id is not None:
+            index[-1]["speaker_id"] = sample.speaker_id
     request = {"batch_size": 1, "temperature": 1.0, "top_k": 1, "top_p": 1.0,
                "max_generate_length": 256, "requests": requests}
     scoring = {**metadata, "samples": index, "evaluation_dataset_sha256": dataset.digest("evaluation"),

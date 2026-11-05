@@ -20,8 +20,11 @@ def main():
     fp8["candidate"]["id"] = "fp8-fp16-audio-demo"
     fp8["candidate"]["precision"]["backbone"] = "fp8"
 
-    for index in range(24):
-        language = "zh" if index < 12 else "en"
+    for run in (original, repaired, fp8):
+        for sample in run["samples"]:
+            sample["speaker_id"] = "demo-" + sample["id"]
+    for index in range(48):
+        language = "zh" if index < 24 else "en"
         reference = f"切换到频道{index}。" if language == "zh" else f"Switch to channel {index}."
         truncated = "切换频道。" if language == "zh" else "Switch channels."
         for run, prediction in (
@@ -29,13 +32,14 @@ def main():
             (repaired, truncated if index % 4 == 0 else reference),
             (fp8, "" if index % 9 == 0 else reference),
         ):
-            run["samples"].append({"id": f"sim-{index:02d}", "reference": reference, "language": language,
+            run["samples"].append({"id": f"sim-{index:02d}", "speaker_id": f"speaker-{index // 2:02d}",
+                                   "reference": reference, "language": language,
                                    "baseline": {"text": reference}, "candidate": {"text": prediction}})
 
     args.output.mkdir()
     for name, run in (("original", original), ("repaired", repaired), ("fp8", fp8)):
         for field in ("evaluation_dataset_sha256", "request_document_sha256"):
-            run[field] = sha256(("synthetic-quality-v1:" + field).encode()).hexdigest()
+            run[field] = sha256(("synthetic-quality-speakers-v2:" + field).encode()).hexdigest()
         (args.output / f"{name}.json").write_text(json.dumps(run, ensure_ascii=False, indent=2) + "\n")
     costs = {
         "schema_version": 1, "protocol_id": "synthetic-warmup-then-repeat",

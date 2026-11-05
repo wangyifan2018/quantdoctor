@@ -56,7 +56,7 @@ python3 -m quantdoctor qat-validate qat.json
 选择诊断实验锁定的 1–14 个精确 decoder 线性投影名。模板中的层名仅为语法示例。填入固定 HF revision 和两份相互独立的数据清单。清单路径相对于配方，音频路径相对于清单。每份清单是 JSON 数组，条目包含：
 
 - `id` 和 `audio`，音频为本地 16 kHz 文件且长度最多 20 秒。
-- `audio_sha256`，用于内容校验与划分检查。
+- `audio_sha256`，用于内容校验与划分检查。可选 `speaker_id` 用于检查校准与训练间的说话人重叠。
 - `prompt_ids`，来自固定模型 tokenizer 的已渲染提示，包含唯一的 audio placeholder。
 - `target_ids`，与提示拼接兼容的参考转写及按实验约定添加的结束 token。生成这些 ID 时检查 tokenizer 边界。清单负责前缀、语言标记及终止符语义。
 

@@ -76,6 +76,23 @@ class DatasetTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "stay inside"):
             load_asr_dataset(self.manifest)
 
+    def test_speaker_isolation_and_propagation(self):
+        self.assertEqual(load_asr_dataset(self.manifest).summary()["speaker_isolation"], "incomplete")
+        self.rows[0]["speaker_id"] = self.rows[1]["speaker_id"] = "speaker-a"
+        self.write_manifest()
+        with self.assertRaisesRegex(ValueError, "speaker 'speaker-a' is present"):
+            load_asr_dataset(self.manifest)
+        self.rows[1]["speaker_id"] = "speaker-b"
+        self.write_manifest()
+        dataset = load_asr_dataset(self.manifest)
+        self.assertEqual(dataset.summary()["speaker_isolation"], "disjoint_declared_ids")
+        metadata = load_json(Path(__file__).resolve().parents[1] / "examples" / "demo-comparison.json")
+        _, prepared = prepare_evaluation(dataset, metadata)
+        self.assertEqual(prepared["samples"][0]["speaker_id"], "speaker-b")
+        self.rows[1]["speaker_id"] = "speaker-c"
+        self.write_manifest()
+        self.assertNotEqual(dataset.digest("evaluation"), load_asr_dataset(self.manifest).digest("evaluation"))
+
 
 if __name__ == "__main__":
     unittest.main()

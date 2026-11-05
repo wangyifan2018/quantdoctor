@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 
 from .diagnostics import ASR_MODEL
-from .model import SHA256, file_sha256, load_json, nonempty, require, valid_ids
+from .model import SHA256, file_sha256, load_json, nonempty, parse_speaker_id, require, valid_ids
 
 EDGE_COMMIT = "1231d6415ce38d0b2f20b3308ac24e58ec4100a8"
 MODULE = re.compile(r"model\.layers\.([0-9]+)\.(?:mlp\.(?:gate|up|down)_proj|self_attn\.(?:q|k|v|o)_proj)")
@@ -56,6 +56,7 @@ class TrainingExample:
     audio_sha256: str
     prompt_ids: list[int]
     target_ids: list[int]
+    speaker_id: str | None = None
 
     def teacher_forcing_ids(self):
         return self.prompt_ids + self.target_ids[:-1]
@@ -87,13 +88,14 @@ def read_examples(path, limit, audio_token_id, vocab_size):
         if audio_path not in audio_hashes:
             audio_hashes[audio_path] = file_sha256(audio_path)
         require(audio_hashes[audio_path] == digest, f"{sample_id}: audio SHA-256 mismatch")
-        samples.append(TrainingExample(sample_id, audio_path, digest, prompt, target))
+        samples.append(TrainingExample(sample_id, audio_path, digest, prompt, target,
+                                       parse_speaker_id(row.get("speaker_id"))))
     return samples
 
 
 def require_disjoint(calibration, training):
-    for key in ("id", "audio_sha256"):
-        overlap = {getattr(row, key) for row in calibration} & {getattr(row, key) for row in training}
+    for key in ("id", "audio_sha256", "speaker_id"):
+        overlap = ({getattr(row, key) for row in calibration} & {getattr(row, key) for row in training}) - {None}
         require(not overlap, f"calibration/training overlap by {key}")
 
 

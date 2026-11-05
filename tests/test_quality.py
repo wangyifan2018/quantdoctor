@@ -47,6 +47,37 @@ class QualityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "dataset or request fingerprint differs"):
             self.compare(self.original, self.repaired)
 
+    def test_resamples_whole_speakers_and_suppresses_partial_labels(self):
+        for document, good in ((self.original, False), (self.repaired, True)):
+            document["samples"] = [
+                {"id": f"clip-{index}", "language": "en", "speaker_id": f"speaker-{index // 10}",
+                 "reference": "open door", "baseline": {"text": "open door"},
+                 "candidate": {"text": "open door" if good else ""}}
+                for index in range(20)
+            ]
+        summary = self.compare(self.original, self.repaired)["metrics"]["wer"]
+        self.assertEqual(summary["common_samples"], 20)
+        self.assertEqual(summary["bootstrap_unit"], "speaker")
+        self.assertEqual(summary["bootstrap_units"], 2)
+        self.assertEqual(summary["interval_status"], "insufficient_units")
+        self.assertEqual(summary["speaker_groups"][0]["samples"], 10)
+        self.assertIsNone(summary["candidates"][0]["interval_95"])
+
+        for document in (self.original, self.repaired):
+            for index, row in enumerate(document["samples"]):
+                row["speaker_id"] = f"speaker-{index // 2}"
+        summary = self.compare(self.original, self.repaired)["metrics"]["wer"]
+        self.assertEqual(summary["bootstrap_units"], 10)
+        self.assertEqual(summary["interval_status"], "available")
+        self.assertEqual(summary["candidates"][1]["interval_95"], [1.0, 1.0])
+        self.repaired["samples"][0].pop("speaker_id")
+        with self.assertRaisesRegex(ValueError, "speaker IDs"):
+            self.compare(self.original, self.repaired)
+        self.original["samples"][0].pop("speaker_id")
+        summary = self.compare(self.original, self.repaired)["metrics"]["wer"]
+        self.assertEqual(summary["interval_status"], "missing_speaker_ids")
+        self.assertIsNone(summary["candidates"][1]["interval_95"])
+
     def test_can_measure_the_repair_against_the_original_candidate(self):
         runs = [Comparison.parse(run) for run in (self.original, self.repaired)]
         report = compare_candidates(runs, reference_run_id=runs[0].candidate.id)

@@ -29,6 +29,12 @@ def nonempty(value):
     return isinstance(value, str) and bool(value.strip())
 
 
+def parse_speaker_id(value):
+    require(value is None or nonempty(value) and value == value.strip(),
+            "speaker_id must be a nonempty string without surrounding whitespace")
+    return value
+
+
 def valid_ids(value):
     return isinstance(value, list) and all(type(token) is int and token >= 0 for token in value)
 
@@ -115,6 +121,7 @@ class Sample:
     reference: str | None
     language: str | None
     audio_sha256: str | None = None
+    speaker_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -149,7 +156,8 @@ class Comparison:
             require(digest is None or isinstance(digest, str) and SHA256.fullmatch(digest),
                     "sample audio_sha256 must be a lowercase SHA-256 digest")
             samples.append(Sample(row["id"], Output.parse(row.get("baseline")),
-                                  Output.parse(row.get("candidate")), reference, language, digest))
+                                  Output.parse(row.get("candidate")), reference, language, digest,
+                                  parse_speaker_id(row.get("speaker_id"))))
         fingerprints = tuple(data.get(key) for key in ("evaluation_dataset_sha256", "request_document_sha256"))
         require(all(value is None or isinstance(value, str) and SHA256.fullmatch(value) for value in fingerprints),
                 "dataset and request fingerprints must be lowercase SHA-256 digests")
