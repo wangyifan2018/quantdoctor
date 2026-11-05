@@ -6,6 +6,7 @@ from pathlib import Path, PurePosixPath
 import wave
 
 from .model import Comparison, document_sha256, file_sha256, load_json, nonempty, parse_speaker_id, require
+from .request_protocol import RAW_AUDIO_EXTENSIONS
 
 
 @dataclass(frozen=True)
@@ -100,10 +101,14 @@ def load_asr_dataset(manifest: Path):
         require(nonempty(transcript), f"{sample_id}: reference transcript is required")
         require(language in ("zh", "en"), f"{sample_id}: language must be en or zh")
         path, resolved = _audio_path(row.get("audio"), root, sample_id)
-        extensions = (".wav", ".flac") if split == "calibration" else (".wav", ".flac", ".mp3")
-        require(path.suffix.lower() in extensions, f"{sample_id}: allowed audio formats are {', '.join(extensions)}")
-        if split == "calibration" and path.suffix.lower() == ".wav":
-            _check_calibration_wav(resolved, sample_id)
+        if split == "calibration":
+            suffix = path.suffix.lower()
+            require(suffix in (".wav", ".flac"), f"{sample_id}: calibration audio requires .wav or .flac")
+            if suffix == ".wav":
+                _check_calibration_wav(resolved, sample_id)
+        else:
+            require(path.suffix in RAW_AUDIO_EXTENSIONS,
+                    f"{sample_id}: Edge evaluation requires a lowercase .wav, .flac or .mp3 suffix")
         if resolved not in hashes:
             hashes[resolved] = file_sha256(resolved)
         digest = hashes[resolved]

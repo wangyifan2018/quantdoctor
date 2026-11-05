@@ -2,15 +2,27 @@
 
 import argparse
 from copy import deepcopy
+from dataclasses import asdict
 from hashlib import sha256
 import json
 from pathlib import Path
 
-from quantdoctor.model import load_json
+from quantdoctor.model import document_sha256, load_json
+from quantdoctor.request_protocol import RequestProtocol
 
 
 def _fixture_hash(value):
     return sha256(value.encode()).hexdigest()
+
+
+def _write_requests(output, cohort, rows):
+    document = {"top_k": 1, "top_p": 1.0, "requests": [{"messages": [
+        {"role": "system", "content": ""},
+        {"role": "user", "content": [{"type": "audio", "audio": f"/fixture/{cohort}/{row['id']}.wav"}]},
+    ]} for row in rows]}
+    (output / f"{cohort}-input.json").write_text(json.dumps(document, indent=2) + "\n")
+    return {"request_document_sha256": document_sha256(document),
+            "request_protocol": asdict(RequestProtocol.from_document(document))}
 
 
 def main():
@@ -52,18 +64,20 @@ def main():
         for row in diagnosis["samples"]:
             audio = (row["baseline"] or {}).get("audio") or {}
             row["audio_sha256"] = audio.get("input_sha256") or _fixture_hash("diagnostic-audio:" + row["id"])
-        for field in fields:
-            diagnosis[field] = _fixture_hash("synthetic-diagnosis:" + field)
+        diagnosis["evaluation_dataset_sha256"] = _fixture_hash("synthetic-diagnosis:dataset")
+        diagnosis.update(_write_requests(args.output, "diagnosis", diagnosis["samples"]))
         (args.output / "diagnosis.json").write_text(json.dumps(diagnosis, ensure_ascii=False, indent=2) + "\n")
+        holdout_requests = _write_requests(args.output, "holdout", [row for row in original["samples"] if row["id"].startswith("sim-")])
     for name, run in (("original", original), ("repaired", repaired), ("fp8", fp8)):
+        for field in fields:
+            run[field] = _fixture_hash(tag + ":" + field)
         if args.holdout:
+            run.update(holdout_requests)
             run["samples"] = [row for row in run["samples"] if row["id"].startswith("sim-")]
             for row in run["samples"]:
                 row["audio_sha256"] = _fixture_hash("holdout-audio:" + row["id"])
             for role in ("baseline", "candidate"):
                 run[role]["id"] = "holdout-" + run[role]["id"]
-        for field in fields:
-            run[field] = _fixture_hash(tag + ":" + field)
         (args.output / f"{name}.json").write_text(json.dumps(run, ensure_ascii=False, indent=2) + "\n")
     costs = {
         "schema_version": 1, "protocol_id": "synthetic-warmup-then-repeat",

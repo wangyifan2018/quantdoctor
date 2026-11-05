@@ -20,6 +20,7 @@ from .qat import QATRecipe, load_qat_inputs, template
 from .preflight import TargetProfile, preflight
 from .quality import compare_candidates
 from .replay import COHORT_FINGERPRINTS, verify_repair
+from .request_protocol import inspect_request_protocol
 from .worker_evidence import import_worker_edge
 
 
@@ -108,7 +109,12 @@ def main(argv=None):
     evaluation.add_argument("comparison_metadata", type=Path)
     evaluation.add_argument("--audio-root", type=PurePosixPath, help="Dataset root as seen on the target")
     evaluation.add_argument("--output", type=Path, required=True)
+    request_audit = commands.add_parser("request-audit", help="Inspect and compare file-level Edge ASR request settings")
+    request_audit.add_argument("request", type=Path)
+    request_audit.add_argument("--against", type=Path)
+    request_audit.add_argument("-o", "--output", type=Path)
     edge_import = commands.add_parser("import-edge", help="Pair two llm_inference result files")
+    edge_import.add_argument("--requests", type=Path, help="Attach the matching request JSON for protocol auditing")
     worker_import = commands.add_parser("import-worker-edge", help="Pair two locally verified infer bundles")
     for importer in (edge_import, worker_import):
         for name in ("manifest", "baseline", "candidate"):
@@ -212,6 +218,11 @@ def main(argv=None):
                 emit(scoring, stage / "manifest.json")
                 stage.rename(output)
             print(output)
+        elif args.command == "request-audit":
+            documents = [load_json(args.request)]
+            if args.against:
+                documents.append(load_json(args.against))
+            emit(inspect_request_protocol(*documents), args.output)
         elif args.command in {"import-edge", "import-worker-edge"}:
             observations = dict(
                 baseline_trace=load_json(args.baseline_trace) if args.baseline_trace else None,
@@ -223,6 +234,8 @@ def main(argv=None):
             if args.command == "import-worker-edge":
                 bundle = import_worker_edge(manifest, args.baseline, args.candidate, **observations)
             else:
+                if args.requests:
+                    observations["request_document"] = load_json(args.requests)
                 bundle = import_edge(manifest, load_json(args.baseline), load_json(args.candidate), **observations)
             Comparison.parse(bundle)
             emit(bundle, args.output)

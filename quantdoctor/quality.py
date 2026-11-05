@@ -32,6 +32,7 @@ def _validate(comparisons):
             "candidate run IDs must be distinct")
     expected = {row.id: (row.reference, row.language, row.baseline, row.audio_sha256, row.speaker_id)
                 for row in first.samples}
+    protocol = next((run.request_protocol for run in comparisons if run.request_protocol), None)
     for comparison in comparisons:
         require(comparison.model == first.model and comparison.baseline == first.baseline,
                 "all candidates must share the same model and baseline run")
@@ -40,10 +41,13 @@ def _validate(comparisons):
         require(comparison.evaluation_dataset_sha256 == first.evaluation_dataset_sha256
                 and comparison.request_document_sha256 == first.request_document_sha256,
                 f"{comparison.candidate.id}: dataset or request fingerprint differs")
+        require(comparison.request_protocol is None or comparison.request_protocol == protocol,
+                f"{comparison.candidate.id}: request protocol contradicts the shared request fingerprint")
         observed = {row.id: (row.reference, row.language, row.baseline, row.audio_sha256, row.speaker_id)
                     for row in comparison.samples}
         require(expected == observed,
                 f"{comparison.candidate.id}: sample IDs, references, speaker IDs, audio fingerprints or baseline outputs differ")
+    return protocol
 
 
 def _percentile(values, fraction):
@@ -140,7 +144,7 @@ def _measure(rows, candidate_ids, eligible_count, reference_index, has_speakers)
 
 
 def compare_candidates(comparisons, reference_run_id=None, *, costs=None):
-    _validate(comparisons)
+    protocol = _validate(comparisons)
     first = comparisons[0]
     indices = [{row.id: row for row in comparison.samples} for comparison in comparisons]
     candidate_ids = [comparison.candidate.id for comparison in comparisons]
@@ -201,6 +205,7 @@ def compare_candidates(comparisons, reference_run_id=None, *, costs=None):
         "reference_run_id": reference_run_id,
         "evaluation_dataset_sha256": first.evaluation_dataset_sha256,
         "request_document_sha256": first.request_document_sha256,
+        "request_protocol": asdict(protocol) if protocol else None,
         "bootstrap": {"resamples": RESAMPLES, "seed": SEED, "minimum_units": MIN_INTERVAL_UNITS},
         "candidates": [{**asdict(comparison.candidate), "outcomes": {
             key: counts[key] for key in ("text", "empty", "failed", "missing")

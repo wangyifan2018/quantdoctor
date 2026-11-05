@@ -13,6 +13,12 @@
     <h1>ASR 空转写诊断</h1>
     <p id="model" class="muted"></p>
     <p id="error" role="alert" hidden></p>
+    <details id="request-protocol" class="replay-overview" hidden>
+      <summary>请求文件设置</summary>
+      <p class="muted">从附带的请求 JSON 提取。CLI 可覆盖 batch size、最大生成长度和 logprobs 数量，实际覆盖以运行记录为准。</p>
+      <p id="request-protocol-sha" class="muted"></p>
+      <div id="request-protocol-settings"></div>
+    </details>
     <section id="target-preflight" class="replay-overview" hidden>
       <p id="preflight-scope">静态规则预检 · 实际构建和推理待设备验证</p>
       <div id="target-checks" class="checkpoint-groups"></div>

@@ -40,7 +40,7 @@ python3 -m quantdoctor compare holdout-demo/original.json holdout-demo/repaired.
 只输出单次复验的 JSON 时，可用 `quantdoctor replay holdout-demo/original.json holdout-demo/repaired.json ASR-014 --diagnosis holdout-demo/diagnosis.json`。`serve --retest` 同样接受 `--diagnosis`。单次复验若附带成本文件，其 `evaluation_dataset_sha256` 和 `request_document_sha256` 必须与留出集对照匹配。多候选成本文件已校验这两个字段，可以直接使用。
 
 - **检查数据隔离。** 两批请求和数据集的摘要须不同。两批清单中的样本 ID、原始音频 SHA-256 和说话人 ID 都须完整且互不重叠。同一说话人的 ID 应在两份清单里使用同一个命名空间。已有运行采集时，实际音频摘要须与清单一致。用 `prepare-eval` 生成清单可从本地音频文件计算摘要。
-- **检查运行关联。** 留出集基线和原方案与诊断集的对应运行固定模型 revision、环境、请求设置、运行来源和精度。运行 ID 可不同。两边都有 engine 或 checkpoint 摘要时要求对应摘要一致，缺少对等摘要时显示仅有运行声明。修复前后继续检查只改工单指定的一个精度字段。
+- **检查运行关联。** 留出集基线和原方案与诊断集的对应运行固定模型 revision、环境、请求设置、运行来源和精度。运行 ID 可不同。两边都有 [请求文件设置摘要](DATASETS.md#跨数据集核对请求设置) 时要求匹配，即使运行声明的设置 ID 相同，文件级漂移也会阻止复验。两边都有 engine 或 checkpoint 摘要时要求对应摘要一致，缺少对等摘要时显示仅有运行声明。修复前后继续检查只改工单指定的一个精度字段。
 - **查看泛化证据。** 工单样本只在诊断集。留出集的 CER/WER 和配对差值使用留出集三次运行的共同可评分记录。页面显示修复后相对原方案的百分点变化。每个语言至少有 10 位可配对说话人时提供 95% bootstrap 区间，同一说话人的样本一起重采样。
 
 隔离核对以提交的清单、音频字节摘要和说话人 ID 为依据。改编码的重复录音、同一说话人的不同 ID、选择策略时是否看过留出结果，都需要实验方另外控制。若使用 QAT，另用 [QAT 数据预检](QAT_PREFLIGHT.md) 检查训练、校准与留出数据的隔离。报告保留设备验收待评估状态。

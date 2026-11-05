@@ -34,6 +34,23 @@ function text(id, value) {
   byId(id).textContent = value;
 }
 
+function showRequestProtocol(protocol) {
+  if (!protocol) return;
+  text("request-protocol-sha", "跨数据集设置摘要 " + protocol.sha256);
+  const list = byId("request-protocol-settings");
+  for (const [key, value] of Object.entries(protocol.settings)) {
+    const row = document.createElement("div");
+    row.className = "tensor-row";
+    const name = document.createElement("code");
+    name.textContent = key;
+    const setting = document.createElement("span");
+    setting.textContent = value == null ? "未指定" : String(value);
+    row.append(name, setting);
+    list.append(row);
+  }
+  byId("request-protocol").hidden = false;
+}
+
 function result(side, output, run) {
   text(side + "-precision", ["backbone", "audio", "head", "kv"].map((key) =>
     key + " " + run.precision[key]).join(" · "));
@@ -149,6 +166,9 @@ function showHoldout(replay) {
   add("诊断观察 · " + replay.work_order.finding.evidence);
   add("诊断集摘要 " + replay.work_order.evaluation_dataset_sha256);
   add("留出集摘要 " + holdout.evaluation_dataset_sha256);
+  add(holdout.request_protocol.status === "matching_files"
+    ? "请求 JSON 设置与模板匹配 · " + holdout.request_protocol.evaluation_sha256
+    : "两侧缺少可比较的请求文件设置，仅核对声明的请求设置 ID。");
   for (const [role, label] of [["baseline", "基线"], ["candidate", "原方案"]]) {
     const control = holdout.controls[role];
     const artifacts = Object.keys(control.matched_artifacts);
@@ -518,8 +538,10 @@ function showWorkerReceipts(data, create) {
       for (const [label, key] of [
         ["Infer 工单", "job_id"], ["执行配置", "profile_id"], ["Engine 摘要", "engine_sha256"],
         ["请求文件摘要", "request_artifact_sha256"], ["响应文件摘要", "response_artifact_sha256"],
+        ["跨数据集设置摘要", "request_protocol_sha256"],
         ["评分记录摘要", "scoring_sha256"],
       ]) {
+        if (!receipt[key]) continue;
         const row = create("p", label + " ");
         row.append(create("code", receipt[key]));
         panel.append(row);
@@ -816,6 +838,7 @@ function showQatPreflight(data) {
 }
 
 function setup(data) {
+  showRequestProtocol(data.request_protocol);
   if (data.kind === "qat_preflight") {
     showQatPreflight(data);
     return;

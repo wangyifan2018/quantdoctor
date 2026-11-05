@@ -1,6 +1,11 @@
 """Import the ordinary Edge-LLM llm_inference JSON result format."""
 
-from .model import SHA256, nonempty, require
+from dataclasses import asdict
+
+from .model import SHA256, document_sha256, nonempty, require
+from .request_protocol import RequestProtocol
+
+_NO_REQUEST_FILE = object()
 
 
 def _responses(document):
@@ -40,7 +45,7 @@ def _attach_evidence(rows, side, manifest, evidence, field):
 
 
 def import_edge(manifest, baseline, candidate, *, baseline_trace=None, candidate_trace=None,
-                baseline_audio=None, candidate_audio=None):
+                baseline_audio=None, candidate_audio=None, request_document=_NO_REQUEST_FILE):
     require(isinstance(manifest, dict) and isinstance(manifest.get("samples"), list),
             "manifest requires a samples array")
     baseline_by_index, candidate_by_index = _responses(baseline), _responses(candidate)
@@ -65,6 +70,17 @@ def import_edge(manifest, baseline, candidate, *, baseline_trace=None, candidate
             if evidence is not None:
                 _attach_evidence(rows, side, manifest, evidence, field)
     bundle = {**manifest, "samples": rows}
+    bundle.pop("request_protocol", None)
+    if request_document is not _NO_REQUEST_FILE:
+        require(isinstance(request_document, dict) and isinstance(request_document.get("requests"), list),
+                "request file requires a requests array")
+        require(indices == set(range(len(request_document["requests"]))),
+                "evaluation manifest must cover exactly the request file indices")
+        require(document_sha256(request_document) == manifest.get("request_document_sha256"),
+                "request file does not match the evaluation request fingerprint")
+        protocol = RequestProtocol.from_document(request_document)
+        if protocol is not None:
+            bundle["request_protocol"] = asdict(protocol)
     for side in ("baseline", "candidate"):
         if isinstance(bundle.get(side), dict):
             bundle[side] = {key: value for key, value in bundle[side].items() if key != "worker_evidence"}

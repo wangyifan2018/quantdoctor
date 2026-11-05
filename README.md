@@ -32,7 +32,7 @@ python3 -m quantdoctor serve comparison.json
 
 ## 自定义校准与评测数据
 
-用 `dataset-validate` 校验本地音频清单、检测校准与评测之间的相同音频文件，并生成 split 摘要。用 `prepare-eval` 生成 Edge-LLM 请求和独立评分清单。校准 split 可通过 `calibration_source` 传给 Edge-LLM Python API。完整示例见 [自定义数据集](docs/DATASETS.md)。
+用 `dataset-validate` 校验本地音频清单、检测校准与评测之间的相同音频文件，并生成 split 摘要。用 `prepare-eval` 生成 Edge-LLM 请求和独立评分清单，或用 `request-audit` 比较两份请求 JSON 的生成设置。校准 split 可通过 `calibration_source` 传给 Edge-LLM Python API。完整示例见 [自定义数据集](docs/DATASETS.md)。
 
 ## 修复复验
 

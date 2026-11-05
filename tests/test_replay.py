@@ -1,10 +1,12 @@
 from copy import deepcopy
+from dataclasses import asdict
 from hashlib import sha256
 from pathlib import Path
 import unittest
 
 from quantdoctor.model import Comparison, load_json, scoring_sha256
 from quantdoctor.replay import verify_repair
+from quantdoctor.request_protocol import RequestProtocol
 
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
@@ -138,6 +140,16 @@ class HoldoutTests(unittest.TestCase):
     def test_holdout_rejects_captured_audio_conflict(self):
         self.repaired["samples"][0]["candidate"]["audio"] = {"input_sha256": "0" * 64}
         with self.assertRaisesRegex(ValueError, "captured audio"):
+            self.replay()
+
+    def test_holdout_detects_decode_drift_even_when_declared_settings_ids_match(self):
+        request = {"requests": [{"messages": [{"role": "user", "content": [{"type": "audio", "audio": "clip.wav"}]}]}],
+                   "top_k": 1}
+        for comparison in (self.diagnosis, self.original, self.repaired):
+            comparison["request_protocol"] = asdict(RequestProtocol.from_document(request))
+        self.assertEqual(self.replay()["holdout"]["request_protocol"]["status"], "matching_files")
+        self.diagnosis["request_protocol"] = asdict(RequestProtocol.from_document({**request, "max_generate_length": 1}))
+        with self.assertRaisesRegex(ValueError, "request file settings differ from diagnosis: max_generate_length"):
             self.replay()
 
     def test_holdout_rejects_different_diagnosis_settings_or_artifacts(self):

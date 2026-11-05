@@ -102,6 +102,7 @@ def work_order(comparison: Comparison, sample_id: str):
         "sample_id": sample.id,
         "evaluation_dataset_sha256": comparison.evaluation_dataset_sha256,
         "request_document_sha256": comparison.request_document_sha256,
+        "request_protocol_sha256": comparison.request_protocol.sha256 if comparison.request_protocol else None,
         "baseline": asdict(comparison.baseline),
         "candidate": asdict(comparison.candidate),
         "finding": asdict(finding),
@@ -164,6 +165,7 @@ def report(comparison: Comparison):
         "model": comparison.model,
         "evaluation_dataset_sha256": comparison.evaluation_dataset_sha256,
         "request_document_sha256": comparison.request_document_sha256,
+        "request_protocol": asdict(comparison.request_protocol) if comparison.request_protocol else None,
         "baseline": asdict(comparison.baseline),
         "candidate": asdict(comparison.candidate),
         "samples": [

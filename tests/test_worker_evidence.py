@@ -1,4 +1,5 @@
 from copy import deepcopy
+from dataclasses import asdict
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -8,6 +9,7 @@ from quantdoctor.artifacts import artifact_digest
 from quantdoctor.contracts import Stage
 from quantdoctor.handoff import create_job
 from quantdoctor.model import Comparison, document_sha256, load_json
+from quantdoctor.request_protocol import RequestProtocol
 from quantdoctor.worker_evidence import import_worker_edge
 
 
@@ -22,7 +24,7 @@ class WorkerEvidenceTests(unittest.TestCase):
         self.root = Path(temporary.name)
         fixture = Path(__file__).resolve().parents[1] / "examples" / "demo-comparison.json"
         self.manifest = load_json(fixture)
-        self.requests = {"requests": [{"fixture": True}]}
+        self.requests = {"requests": [{"messages": [{"role": "user", "content": [{"type": "audio", "audio": "clip.wav"}]}]}]}
         self.manifest["request_document_sha256"] = document_sha256(self.requests)
         self.manifest["samples"] = [{"id": "clip", "request_idx": 0, "reference": "开窗", "language": "zh"}]
         self.baseline = self.bundle("baseline", "开窗")
@@ -53,11 +55,15 @@ class WorkerEvidenceTests(unittest.TestCase):
         self.assertEqual(evidence.engine_sha256, artifact_digest(self.candidate / "inputs" / "engine_bundle"))
         self.assertEqual(evidence.response_artifact_sha256, artifact_digest(self.candidate / "outputs" / "responses"))
         self.assertEqual(comparison.samples[0].candidate.text, "")
+        self.assertEqual(evidence.request_protocol_sha256, comparison.request_protocol.sha256)
         for field, value in (("candidate", {"text": "edited"}), ("reference", "替换")):
             changed = deepcopy(bundle)
             changed["samples"][0][field] = value
             with self.assertRaisesRegex(ValueError, "normalized scoring rows"):
                 Comparison.parse(changed)
+        bundle["request_protocol"] = asdict(RequestProtocol.from_document({**self.requests, "max_generate_length": 32}))
+        with self.assertRaisesRegex(ValueError, "worker evidence does not match the request protocol"):
+            Comparison.parse(bundle)
 
     def test_rejects_tampered_artifacts(self):
         for role in ("inputs/engine_bundle/model.engine", "inputs/requests", "outputs/responses"):

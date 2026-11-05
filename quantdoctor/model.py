@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .audio_evidence import AudioEvidence
+    from .request_protocol import RequestProtocol
     from .trace import DecodeStep
 
 
@@ -60,17 +61,22 @@ class WorkerEvidence:
     request_document_sha256: str
     evaluation_dataset_sha256: str
     scoring_sha256: str
+    request_protocol_sha256: str | None = None
 
     @classmethod
     def parse(cls, value):
         if value is None:
             return None
-        require(isinstance(value, dict) and value.keys() == cls.__dataclass_fields__.keys(),
+        required = cls.__dataclass_fields__.keys() - {"request_protocol_sha256"}
+        require(isinstance(value, dict) and required <= value.keys() <= cls.__dataclass_fields__.keys(),
                 "invalid worker evidence fields")
         require(nonempty(value["profile_id"]) and value["source"] in ("fixture", "worker"),
                 "invalid worker evidence profile or source")
-        for key in cls.__dataclass_fields__.keys() - {"profile_id", "source"}:
+        for key in required - {"profile_id", "source"}:
             require(isinstance(value[key], str) and SHA256.fullmatch(value[key]), f"invalid worker evidence {key}")
+        protocol = value.get("request_protocol_sha256")
+        require(protocol is None or isinstance(protocol, str) and SHA256.fullmatch(protocol),
+                "invalid worker evidence request_protocol_sha256")
         return cls(**value)
 
 
@@ -178,6 +184,7 @@ class Comparison:
     samples: list[Sample]
     evaluation_dataset_sha256: str | None = None
     request_document_sha256: str | None = None
+    request_protocol: "RequestProtocol | None" = None
 
     @classmethod
     def parse(cls, data):
@@ -207,6 +214,10 @@ class Comparison:
         fingerprints = tuple(data.get(key) for key in ("evaluation_dataset_sha256", "request_document_sha256"))
         require(all(value is None or isinstance(value, str) and SHA256.fullmatch(value) for value in fingerprints),
                 "dataset and request fingerprints must be lowercase SHA-256 digests")
+        from .request_protocol import RequestProtocol
+
+        protocol = RequestProtocol.parse(data.get("request_protocol"))
+        require(protocol is None or fingerprints[1], "request protocol requires a request document fingerprint")
         for side, run in (("baseline", baseline), ("candidate", candidate)):
             evidence = run.worker_evidence
             if evidence is not None:
@@ -214,4 +225,7 @@ class Comparison:
                         f"{side}: worker evidence dataset or request fingerprint differs")
                 require(evidence.scoring_sha256 == scoring_sha256(samples, side),
                         f"{side}: worker evidence does not match the normalized scoring rows")
-        return cls(data["model"], baseline, candidate, samples, *fingerprints)
+                require(evidence.request_protocol_sha256 is None or
+                        protocol is not None and protocol.sha256 == evidence.request_protocol_sha256,
+                        f"{side}: worker evidence does not match the request protocol")
+        return cls(data["model"], baseline, candidate, samples, *fingerprints, protocol)

@@ -70,6 +70,13 @@ class DatasetTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "16 kHz"):
             load_asr_dataset(self.manifest)
 
+    def test_evaluation_audio_suffix_matches_edge_parser(self):
+        self.write_wav("eval.WAV", 16_000, b"\x01\x00")
+        self.rows[1]["audio"] = "eval.WAV"
+        self.write_manifest()
+        with self.assertRaisesRegex(ValueError, "requires a lowercase .wav"):
+            load_asr_dataset(self.manifest)
+
     def test_paths_cannot_escape_manifest_directory(self):
         self.rows[0]["audio"] = "../outside.wav"
         self.write_manifest()

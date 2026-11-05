@@ -22,6 +22,8 @@ def _controls(before: Comparison, after: Comparison, order):
     for field in COHORT_FINGERPRINTS:
         original, repaired = getattr(before, field), getattr(after, field)
         require(original and original == repaired, f"repair requires matching {field}")
+    require(not (before.request_protocol and after.request_protocol) or before.request_protocol == after.request_protocol,
+            "repair request protocols contradict the shared request fingerprint")
     require(all("unknown" not in run.precision.values()
                 for run in (before.baseline, before.candidate, after.candidate)),
             "effective precision must be known for all components")
@@ -40,6 +42,11 @@ def _holdout_identity(diagnosis, before, after):
     for field in COHORT_FINGERPRINTS:
         first, second = getattr(diagnosis, field), getattr(before, field)
         require(first and second and first != second, f"holdout requires a distinct {field} from diagnosis")
+    diagnostic_protocol = diagnosis.request_protocol
+    holdout_protocol = before.request_protocol or after.request_protocol
+    if diagnostic_protocol and holdout_protocol:
+        differences = diagnostic_protocol.differences(holdout_protocol)
+        require(not differences, "holdout request file settings differ from diagnosis: " + ", ".join(differences))
     identities = {}
     for field in ("id", "audio_sha256", "speaker_id"):
         first = {getattr(row, field) for row in diagnosis.samples}
@@ -73,6 +80,11 @@ def _holdout_identity(diagnosis, before, after):
         "diagnosis_speakers": identities["speaker_id"][0], "evaluation_speakers": identities["speaker_id"][1],
         **{field: getattr(before, field) for field in COHORT_FINGERPRINTS},
         "controls": controls,
+        "request_protocol": {
+            "status": "matching_files" if diagnostic_protocol and holdout_protocol else "not_available",
+            "diagnosis_sha256": diagnostic_protocol.sha256 if diagnostic_protocol else None,
+            "evaluation_sha256": holdout_protocol.sha256 if holdout_protocol else None,
+        },
     }
 
 

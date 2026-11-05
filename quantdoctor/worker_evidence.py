@@ -31,12 +31,6 @@ def _infer_evidence(directory, manifest, side):
     requests = _bound_json(inputs / "requests", job.inputs["requests"])
     require(document_sha256(requests) == manifest.get("request_document_sha256"),
             f"{side}: worker requests do not match the evaluation request fingerprint")
-    rows = manifest.get("samples")
-    require(isinstance(requests, dict) and isinstance(requests.get("requests"), list)
-            and isinstance(rows, list) and len(rows) == len(requests["requests"])
-            and all(isinstance(row, dict) and type(row.get("request_idx")) is int for row in rows)
-            and {row["request_idx"] for row in rows} == set(range(len(rows))),
-            "evaluation manifest must cover exactly the worker request indices")
     responses = _bound_json(outputs / "responses", result.outputs["responses"])
     evidence = {
         "job_id": job.id, "profile_id": job.profile_id, "source": result.source,
@@ -45,7 +39,7 @@ def _infer_evidence(directory, manifest, side):
         "request_document_sha256": manifest["request_document_sha256"],
         "evaluation_dataset_sha256": manifest["evaluation_dataset_sha256"],
     }
-    return responses, evidence
+    return responses, evidence, requests
 
 
 def import_worker_edge(manifest, baseline, candidate, **observations):
@@ -53,13 +47,15 @@ def import_worker_edge(manifest, baseline, candidate, **observations):
             and SHA256.fullmatch(manifest[key])
             for key in ("evaluation_dataset_sha256", "request_document_sha256")),
             "worker import requires evaluation dataset and request fingerprints")
-    baseline_response, baseline_evidence = _infer_evidence(baseline, manifest, "baseline")
-    candidate_response, candidate_evidence = _infer_evidence(candidate, manifest, "candidate")
+    baseline_response, baseline_evidence, requests = _infer_evidence(baseline, manifest, "baseline")
+    candidate_response, candidate_evidence, _ = _infer_evidence(candidate, manifest, "candidate")
     require(baseline_evidence["job_id"] != candidate_evidence["job_id"],
             "baseline and candidate require distinct infer jobs")
-    bundle = import_edge(manifest, baseline_response, candidate_response, **observations)
+    bundle = import_edge(manifest, baseline_response, candidate_response, request_document=requests, **observations)
     comparison = Comparison.parse(bundle)
     for side, evidence in (("baseline", baseline_evidence), ("candidate", candidate_evidence)):
+        if comparison.request_protocol is not None:
+            evidence["request_protocol_sha256"] = comparison.request_protocol.sha256
         bundle[side]["worker_evidence"] = {**evidence, "scoring_sha256": scoring_sha256(comparison.samples, side)}
     Comparison.parse(bundle)
     return bundle
