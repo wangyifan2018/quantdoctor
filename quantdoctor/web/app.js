@@ -510,7 +510,44 @@ function showPreflight(data) {
   byId("target-preflight").hidden = false;
 }
 
+function showQatPreflight(data) {
+  document.querySelector("h1").textContent = "QAT 数据预检";
+  text("source", "本地输入校验");
+  text("model", data.model + " · " + data.model_revision + " · " + data.backbone);
+  text("preflight-scope", "已检查选定权重、token 范围和清单。训练及设备验收待验证。");
+  const container = byId("target-checks");
+  const labels = {calibration: "校准集", train: "训练集", evaluation: "评测留出集"};
+  function card(title, lines) {
+    const section = document.createElement("section");
+    section.className = "checkpoint-group";
+    const heading = document.createElement("h2");
+    heading.textContent = title;
+    section.append(heading);
+    for (const line of lines) {
+      const p = document.createElement("p");
+      p.textContent = line;
+      section.append(p);
+    }
+    container.append(section);
+  }
+  for (const [name, split] of Object.entries(data.splits)) {
+    const lines = [split.count + " 条 · " + split.speaker_count + " 位已标注说话人",
+      split.missing_speaker_ids + " 条缺少说话人 ID"];
+    if (split.audio_header_checked != null) {
+      lines.push(split.audio_header_checked + " 条通过本机 WAV 头部检查，实际解码待 Worker");
+    }
+    card(labels[name], lines);
+  }
+  card("选定投影", data.modules.map(module => module.name + " · " + module.dtype + " [" + module.shape.join(" × ") + "]"));
+  if (data.warnings.length) card("待复核", data.warnings);
+  byId("target-preflight").hidden = false;
+}
+
 function setup(data) {
+  if (data.kind === "qat_preflight") {
+    showQatPreflight(data);
+    return;
+  }
   if (data.kind === "target_preflight") {
     showPreflight(data);
     return;

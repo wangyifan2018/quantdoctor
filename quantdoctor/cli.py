@@ -15,7 +15,7 @@ from .diagnostics import report, work_order
 from .edge import import_edge
 from .handoff import create_job, next_job
 from .model import Comparison, load_json, require
-from .qat import QATRecipe, template
+from .qat import QATRecipe, load_qat_inputs, template
 from .preflight import TargetProfile, preflight
 from .quality import compare_candidates
 from .replay import verify_repair
@@ -106,7 +106,10 @@ def main(argv=None):
             command.add_argument("-o", "--output", type=Path)
 
     commands.add_parser("qat-template").add_argument("-o", "--output", type=Path)
-    commands.add_parser("qat-validate").add_argument("recipe", type=Path)
+    qat_check = commands.add_parser("qat-validate", help="Validate a QAT recipe and optionally inspect local inputs")
+    qat_check.add_argument("recipe", type=Path)
+    qat_check.add_argument("--snapshot", type=Path)
+    qat_check.add_argument("--port", type=int, help="Open a loopback preflight workbench")
     commands.add_parser("job-validate", help="Validate an offline worker job and print its digest").add_argument("job", type=Path)
     commands.add_parser("artifact-digest", help="Print the digest of a local artifact file or directory").add_argument(
         "artifact", type=Path)
@@ -201,8 +204,17 @@ def main(argv=None):
         elif args.command == "qat-template":
             emit(template(), args.output)
         elif args.command == "qat-validate":
-            QATRecipe.parse(load_json(args.recipe))
-            print("QAT recipe schema validated. Model, datasets and device are checked by the worker.")
+            recipe = QATRecipe.parse(load_json(args.recipe))
+            if args.snapshot is None:
+                require(args.port is None, "--port requires --snapshot")
+                print("QAT recipe schema validated. Pass --snapshot to check local inputs.")
+            else:
+                _, _, data = load_qat_inputs(recipe, args.recipe, args.snapshot)
+                if args.port is None:
+                    emit(data)
+                else:
+                    from .server import serve
+                    serve(data, args.port)
         elif args.command == "artifact-digest":
             print(artifact_digest(args.artifact))
         elif args.command in {"job-create", "job-next"}:

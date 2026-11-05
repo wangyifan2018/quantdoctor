@@ -14,7 +14,7 @@
 | Planner 与 Web | 展示证据、提出单变量改变、导出工单。规划逐组干预后再细化到层。 | 已实现本地样本视图、工单、三组复验对照和 [EOS 分差图](DECODE_EVIDENCE.md)。已支持 [多候选的共同样本排序与同协议性能前沿](COMPARE.md)。设备实测待做。 |
 | Model Inspector | 从 HF config 与 safetensors 头部解析张量 shape、dtype、ties 和组件体积，按需核对实际张量内容。 | 已实现 [本地检查和变更审计](CHECKPOINT.md)。校准、导出和 engine 之间的 FQN 映射待做。 |
 | Artifact Store 与协调器 | 读取工单、解析内容摘要、物化输入、保存阶段结果。首次设备接入通过文件往返。 | 已实现离线阶段合同和 [输入及结果产物校验](ARTIFACTS.md)。已支持验证上游产物后生成下游工单。实际执行、重试与缓存待做。 |
-| Backend Adapter | 版本绑定的 PTQ、QAT、模型探针、ONNX 导出、Engine Build、运行与采样。 | 选择性 QAT 有独立试验性 Worker。其余保留阶段接口。实际执行均需单独验证。 |
+| Backend Adapter | 版本绑定的 PTQ、QAT、模型探针、ONNX 导出、Engine Build、运行与采样。 | 选择性 QAT 有 [Mac 输入预检](QAT_PREFLIGHT.md) 和独立试验性 Worker。其余保留阶段接口。实际执行均需单独验证。 |
 | Target Profile | 将模型、精度和执行环境的支持证据绑定到具体阶段。 | 已实现按版本的 [静态设备预检](PREFLIGHT.md)。能力实测登记与自动探测待做。 |
 
 依赖方向由 CLI/Web 指向本地分诊与合同，再由协调器调用 Worker。模型库、ModelOpt、CUDA、TensorRT 只在相应 Worker 加载。ASR 规则放在任务层。将来增加 TTS 时独立定义语音输出指标与组件链，增加 QNN 时实现不同的后端及 encodings 路径，共用工单与结果边界。

@@ -50,7 +50,7 @@ python3 -m quantdoctor serve comparison.json
 
 ```sh
 python3 -m quantdoctor qat-template -o qat.json
-python3 -m quantdoctor qat-validate qat.json
+python3 -m quantdoctor qat-validate qat.json --snapshot /path/to/pinned-float-hf-snapshot
 ```
 
 选择诊断实验锁定的 1–14 个精确 decoder 线性投影名。模板中的层名仅为语法示例。填入固定 HF revision 和两份相互独立的数据清单。清单路径相对于配方，音频路径相对于清单。每份清单是 JSON 数组，条目包含：
@@ -59,6 +59,8 @@ python3 -m quantdoctor qat-validate qat.json
 - `audio_sha256`，用于内容校验与划分检查。可选 `speaker_id` 用于检查校准与训练间的说话人重叠。
 - `prompt_ids`，来自固定模型 tokenizer 的已渲染提示，包含唯一的 audio placeholder。
 - `target_ids`，与提示拼接兼容的参考转写及按实验约定添加的结束 token。生成这些 ID 时检查 tokenizer 边界。清单负责前缀、语言标记及终止符语义。
+
+可先在 Mac 检查模型权重头、token、音频和留出集隔离，并用 Web 查看摘要。见 [QAT 数据预检](docs/QAT_PREFLIGHT.md)。
 
 在准备好工具链的 Linux/CUDA Worker 执行。该适配器绑定 Edge-LLM `1231d6415ce38d0b2f20b3308ac24e58ec4100a8`、ModelOpt 0.45.0、PyTorch 2.13.0 和 Transformers 5.14.1，并需要 Edge-LLM 量化工具依赖。
 

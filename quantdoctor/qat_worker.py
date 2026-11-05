@@ -12,7 +12,7 @@ import sys
 from tempfile import TemporaryDirectory
 
 from .model import file_sha256, load_json, require
-from .qat import EDGE_COMMIT, QATRecipe, read_examples, require_disjoint
+from .qat import EDGE_COMMIT, QATRecipe, load_qat_inputs
 
 
 def _check_worker(edge_repo):
@@ -26,28 +26,6 @@ def _check_worker(edge_repo):
     for name, expected in (("nvidia-modelopt", "0.45.0"), ("transformers", "5.14.1"), ("torch", "2.13.0")):
         require(versions[name].split("+")[0] == expected, f"QAT requires {name}=={expected}")
     return versions
-
-
-def _load_data(recipe, recipe_path, snapshot):
-    require(not (snapshot / "hf_quant_config.json").exists(), "QAT starts from a float HF snapshot")
-    config = load_json(snapshot / "config.json")
-    require(config.get("model_type") == "qwen3_asr" and not config.get("quantization_config"),
-            "expected float Qwen3-ASR snapshot")
-    thinker = config.get("thinker_config") or {}
-    text, audio = thinker.get("text_config", {}), thinker.get("audio_config", {})
-    require((text.get("num_hidden_layers"), text.get("hidden_size"), audio.get("encoder_layers"))
-            == (28, 1024, 18), "expected Qwen3-ASR-0.6B architecture")
-    token_id, vocab = thinker.get("audio_token_id"), text.get("vocab_size")
-    require(type(token_id) is int and type(vocab) is int and 0 <= token_id < vocab,
-            "missing valid audio_token_id or vocab_size")
-    manifests = {
-        "calibration": (recipe_path.parent / recipe.calibration_manifest).resolve(),
-        "train": (recipe_path.parent / recipe.train_manifest).resolve(),
-    }
-    calibration = read_examples(manifests["calibration"], 128, token_id, vocab)
-    training = read_examples(manifests["train"], 4096, token_id, vocab)
-    require_disjoint(calibration, training)
-    return calibration, training, {name: file_sha256(path) for name, path in manifests.items()}
 
 
 def _weight_files(snapshot):
@@ -174,6 +152,7 @@ def run(recipe_path, snapshot, edge_repo, destination):
     versions = _check_worker(edge_repo)
     require(not destination.exists(), "QAT destination already exists")
     require(destination.parent.is_dir(), "QAT destination parent must exist")
+    calibration, training, preflight = load_qat_inputs(recipe, recipe_path, snapshot)
 
     import modelopt.torch.quantization as mtq
     from modelopt.torch.export import export_hf_checkpoint
@@ -197,7 +176,6 @@ def run(recipe_path, snapshot, edge_repo, destination):
     )
     from tensorrt_edgellm.quantization.qwen3_asr_loader import postprocess_qwen3_asr_checkpoint
 
-    calibration, training, manifest_hashes = _load_data(recipe, recipe_path, snapshot)
     weights = _weight_files(snapshot)
     snapshot_id = _snapshot_fingerprint(snapshot, weights)
     torch.manual_seed(recipe.seed)
@@ -235,7 +213,7 @@ def run(recipe_path, snapshot, edge_repo, destination):
         audited = _audit_export(checkpoint, recipe, safe_open, torch)
         report = {
             "schema_version": 1, "status": "checkpoint_exported", "target_validation": "pending",
-            "recipe": recipe_doc, "snapshot_sha256": snapshot_id, "dataset_sha256": manifest_hashes,
+            "recipe": recipe_doc, "snapshot_sha256": snapshot_id, "dataset_sha256": preflight["manifest_sha256"],
             "versions": versions, "gpu": torch.cuda.get_device_name(), "cuda": torch.version.cuda,
             "platform": platform.platform(), "training_steps": losses, "audited_modules": audited,
         }
