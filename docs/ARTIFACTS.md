@@ -52,4 +52,6 @@ python3 -m quantdoctor import-worker-edge eval/manifest.json fp16/ nvfp4/ -o nvf
 
 导入时复核 engine、请求和响应的文件摘要、规范化请求摘要及完整的请求索引。规范化结果的每个 run 持有 `worker_evidence`，其中 `scoring_sha256` 覆盖样本 ID、参考、语言、预期音频摘要、说话人及该 run 的最终文本、停止原因、生成数。对同一模板的原始音频请求，额外保留 `request_protocol_sha256` 以支持 [跨数据集设置核对](DATASETS.md#跨数据集核对请求设置)。手工改变这些评分字段后需重新从原始工件导入。也可使用 `import-edge` 的音频和解码 sidecar 参数，附加采集独立关联。多候选页面的「运行产物」可展开查看摘要。
 
-此记录用于本地复核，工单及摘要没有签名。评测清单及附加 sidecar 仍由实验提供方维护。板端实际加载的 engine、音频文件、内核和有效精度需另用目标日志和测量记录核实。
+`edge-asr-infer-v1` 的成功回传还包含 `outputs/invocation`，用于核对固定 CLI 参数、二进制摘要和运行读取的音频摘要。旧工单仍可按原格式导入。见 [ASR Infer 适配器](INFER.md)。
+
+此记录用于本地复核，工单及摘要没有签名。评测清单及附加 sidecar 仍由实验提供方维护。板端实际加载的 engine、动态库、内核和有效精度需另用目标日志和测量记录核实。

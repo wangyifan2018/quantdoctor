@@ -11,6 +11,8 @@ from typing import Protocol
 
 from .model import SHA256, nonempty, require
 
+EDGE_ASR_INFER_BACKEND = "edge-asr-infer-v1"
+
 
 class Stage(str, Enum):
     PTQ = "ptq"
@@ -103,6 +105,8 @@ class WorkerResult:
         require(isinstance(data["message"], str), "message must be a string")
         require(status == "succeeded" or nonempty(data["message"]), "failed/unsupported result requires a reason")
         roles = ARTIFACTS[job.stage].outputs if status == "succeeded" else frozenset()
+        if roles and job.stage == Stage.INFER and job.backend == EDGE_ASR_INFER_BACKEND:
+            roles = roles | {"invocation"}
         return cls(job.id, job.profile_id, data["source"], status, _digests(data["outputs"], roles), data["message"])
 
 

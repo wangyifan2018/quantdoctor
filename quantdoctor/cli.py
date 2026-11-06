@@ -15,6 +15,7 @@ from .datasets import load_asr_dataset, prepare_evaluation
 from .diagnostics import report, work_order
 from .edge import import_edge
 from .handoff import create_job, next_job
+from .infer import plan_infer, run_infer
 from .model import Comparison, load_json, require
 from .qat import QATRecipe, load_qat_inputs, template
 from .preflight import TargetProfile, preflight
@@ -170,6 +171,14 @@ def main(argv=None):
         command.add_argument("profile_id")
         command.add_argument("inputs", type=Path)
         command.add_argument("-o", "--output", type=Path)
+    infer_plan = commands.add_parser("infer-plan", help="Check an ASR Infer bundle and print the pinned CLI arguments")
+    infer_run = commands.add_parser("infer-run", help="Run a pinned ASR Infer bundle on a Linux worker")
+    for command in (infer_plan, infer_run):
+        command.add_argument("bundle", type=Path)
+        command.add_argument("profile", type=Path)
+        command.add_argument("--binary", required=True, type=Path, help="Absolute path to the worker executable")
+    infer_plan.add_argument("-o", "--output", type=Path)
+    infer_run.add_argument("--fixture", action="store_true", help="Run a synthetic executable and label all evidence as fixture")
     worker = commands.add_parser("qat-run", help="Run selective QAT on a Linux/CUDA worker")
     worker.add_argument("recipe", type=Path)
     for flag in ("snapshot", "edge-repo", "output"):
@@ -301,6 +310,14 @@ def main(argv=None):
                           "execution_verified": False})
                 else:
                     print(f"Result schema validated: {result.source}/{result.status}. Artifacts and execution are unverified.")
+        elif args.command in {"infer-plan", "infer-run"}:
+            profile = TargetProfile.parse(load_json(args.profile))
+            if args.command == "infer-plan":
+                emit(plan_infer(args.bundle, profile, args.binary), args.output)
+            else:
+                result = run_infer(args.bundle, profile, args.binary, fixture=args.fixture)
+                emit(result)
+                return int(result["status"] != "succeeded")
         elif args.command == "qat-run":
             from .qat_worker import run
             run(*(path.resolve() for path in (args.recipe, args.snapshot, args.edge_repo, args.output)))

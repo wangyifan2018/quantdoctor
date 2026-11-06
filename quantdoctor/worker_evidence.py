@@ -6,6 +6,7 @@ import json
 from .artifacts import file_artifact_sha256, verify_artifacts
 from .contracts import Stage, WorkerJob, WorkerResult
 from .edge import import_edge
+from .infer import validate_invocation
 from .model import Comparison, SHA256, document_sha256, load_json, require, scoring_sha256
 
 
@@ -39,7 +40,14 @@ def _infer_evidence(directory, manifest, side):
         "request_document_sha256": manifest["request_document_sha256"],
         "evaluation_dataset_sha256": manifest["evaluation_dataset_sha256"],
     }
-    return responses, evidence, requests
+    invocation = None
+    if "invocation" in result.outputs:
+        invocation = _bound_json(outputs / "invocation", result.outputs["invocation"])
+        validate_invocation(invocation, job, result.source, requests, responses)
+        evidence["invocation"] = {"artifact_sha256": result.outputs["invocation"],
+                                  "binary_sha256": invocation["binary_sha256"], "exit_code": invocation["exit_code"],
+                                  "audio_checked": len(invocation["audio_sha256"]), "audio_manifest_checked": 0}
+    return responses, evidence, requests, invocation
 
 
 def import_worker_edge(manifest, baseline, candidate, **observations):
@@ -47,13 +55,26 @@ def import_worker_edge(manifest, baseline, candidate, **observations):
             and SHA256.fullmatch(manifest[key])
             for key in ("evaluation_dataset_sha256", "request_document_sha256")),
             "worker import requires evaluation dataset and request fingerprints")
-    baseline_response, baseline_evidence, requests = _infer_evidence(baseline, manifest, "baseline")
-    candidate_response, candidate_evidence, _ = _infer_evidence(candidate, manifest, "candidate")
+    baseline_response, baseline_evidence, requests, baseline_invocation = _infer_evidence(baseline, manifest, "baseline")
+    candidate_response, candidate_evidence, _, candidate_invocation = _infer_evidence(candidate, manifest, "candidate")
     require(baseline_evidence["job_id"] != candidate_evidence["job_id"],
             "baseline and candidate require distinct infer jobs")
     bundle = import_edge(manifest, baseline_response, candidate_response, request_document=requests, **observations)
     comparison = Comparison.parse(bundle)
-    for side, evidence in (("baseline", baseline_evidence), ("candidate", candidate_evidence)):
+    if baseline_invocation and candidate_invocation:
+        require(baseline_invocation["audio_sha256"] == candidate_invocation["audio_sha256"],
+                "baseline and candidate Infer invocations read different audio bytes")
+    for side, evidence, invocation in (("baseline", baseline_evidence, baseline_invocation),
+                                       ("candidate", candidate_evidence, candidate_invocation)):
+        if invocation is not None:
+            require(comparison.request_protocol is not None, "Infer invocation requires a uniform ASR request protocol")
+            for row, sample in zip(manifest["samples"], comparison.samples, strict=True):
+                actual = invocation["audio_sha256"][row["request_idx"]]
+                output = getattr(sample, side)
+                captured = output.audio.input_sha256 if output and output.audio else None
+                require(all(value is None or value == actual for value in (sample.audio_sha256, captured)),
+                        f"{side} {sample.id}: Infer audio fingerprint differs from manifest or capture")
+                evidence["invocation"]["audio_manifest_checked"] += sample.audio_sha256 is not None
         if comparison.request_protocol is not None:
             evidence["request_protocol_sha256"] = comparison.request_protocol.sha256
         bundle[side]["worker_evidence"] = {**evidence, "scoring_sha256": scoring_sha256(comparison.samples, side)}

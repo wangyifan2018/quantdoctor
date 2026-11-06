@@ -14,7 +14,7 @@
 | Planner 与 Web | 展示证据、提出单变量改变、导出工单。规划逐组干预后再细化到层。 | 已实现 [从候选分布下钻到样本和边界证据](COMPARE.md)，同一页面可比较复验改善、退化和成本，并查看 [独立留出集隔离与配对区间](REPLAY.md#独立留出集复验)。设备实测待做。 |
 | Model Inspector | 从 HF config 与 safetensors 头部解析张量 shape、dtype、ties 和组件体积，按需核对实际张量内容。 | 已实现 [本地检查和变更审计](CHECKPOINT.md)。校准、导出和 engine 之间的 FQN 映射待做。 |
 | Artifact Store 与协调器 | 读取工单、解析内容摘要、物化输入、保存阶段结果。首次设备接入通过文件往返。 | 已实现离线阶段合同、下游工单生成及 [将校验过的 Infer 产物关联到评分](ARTIFACTS.md)。实际执行、重试与缓存待做。 |
-| Backend Adapter | 版本绑定的 PTQ、QAT、模型探针、ONNX 导出、Engine Build、运行与采样。 | 选择性 QAT 有 [Mac 输入预检](QAT_PREFLIGHT.md) 和独立试验性 Worker。其余保留阶段接口。实际执行均需单独验证。 |
+| Backend Adapter | 版本绑定的 PTQ、QAT、模型探针、ONNX 导出、Engine Build、运行与采样。 | 选择性 QAT 有 [Mac 输入预检](QAT_PREFLIGHT.md) 和试验性 Worker。[单设备 ASR Infer](INFER.md) 有目录预检、固定调用及证据回传，已用模拟进程验证。真实设备执行待测。 |
 | Target Profile | 将模型、精度和执行环境的支持证据绑定到具体阶段。 | 已实现按版本的 [静态设备预检](PREFLIGHT.md)。能力实测登记与自动探测待做。 |
 
 依赖方向由 CLI/Web 指向本地分诊与合同，再由协调器调用 Worker。模型库、ModelOpt、CUDA、TensorRT 只在相应 Worker 加载。ASR 规则放在任务层。将来增加 TTS 时独立定义语音输出指标与组件链，增加 QNN 时实现不同的后端及 encodings 路径，共用工单与结果边界。
@@ -47,7 +47,7 @@ flowchart LR
 | `probe` | subject、probe_plan、requests | observations |
 | `export` | checkpoint（浮点或量化）、export_config | onnx_bundle |
 | `build` | onnx_bundle、build_config | engine_bundle |
-| `infer` | engine_bundle、requests | responses |
+| `infer` | engine_bundle、requests | responses；`edge-asr-infer-v1` 另含 invocation |
 | `profile` | engine_bundle、requests、profile_config | profile |
 
 - **作业身份**来自版本、stage、backend、profile ID 和输入摘要的规范 JSON。配置变更需成为输入工件，生成新 ID。目录型工件通过稳定排序的文件清单计算摘要。对同名作业持锁，成功产物须验哈希才可发布或缓存，失败可以重试并保留日志。
@@ -55,7 +55,7 @@ flowchart LR
 - **执行状态**为 `succeeded`、`failed` 或 `unsupported`。成功必须提供该阶段的全部产物摘要，失败或不支持须给出原因。schema 校验只证明字段、阶段与 job 绑定正确。只有完成同目标、同配方的验收才升级为已部署验证。演示结果始终标为 `fixture`，不能晋升成设备证据。
 - **证据层级**区分静态、Torch、checkpoint、ONNX、Engine Build 和板端评测。未采集与数值为零分别存储。真实数据和模型权重由用户在设备侧管理，仓库仅收公开引用、合成样本和自研实现。
 
-当前 QAT CLI 有独立配方和本地文件入口。第一次 CUDA 验证后，再把它接入通用 `qat` 阶段合同。其他 Worker 阶段先保留类型与输入输出，不注册为可执行能力。
+当前 QAT CLI 有独立配方和本地文件入口。第一次 CUDA 验证后，再把它接入通用 `qat` 阶段合同。Infer 通过固定后端 ID 接入通用合同。其余 Worker 阶段保留类型与输入输出，等待适配。
 
 ## 后续优先级
 

@@ -51,6 +51,30 @@ def document_sha256(document):
 
 
 @dataclass(frozen=True)
+class InvocationEvidence:
+    artifact_sha256: str
+    binary_sha256: str
+    exit_code: int
+    audio_checked: int
+    audio_manifest_checked: int
+
+    @classmethod
+    def parse(cls, value):
+        if value is None:
+            return None
+        require(isinstance(value, dict) and value.keys() == cls.__dataclass_fields__.keys(),
+                "invalid Infer invocation evidence fields")
+        require(all(isinstance(value[key], str) and SHA256.fullmatch(value[key])
+                    for key in ("artifact_sha256", "binary_sha256")), "invalid Infer invocation evidence digest")
+        require(type(value["exit_code"]) is int and value["exit_code"] in (0, 1)
+                and type(value["audio_checked"]) is int and value["audio_checked"] > 0
+                and type(value["audio_manifest_checked"]) is int
+                and 0 <= value["audio_manifest_checked"] <= value["audio_checked"],
+                "invalid Infer invocation status or audio counts")
+        return cls(**value)
+
+
+@dataclass(frozen=True)
 class WorkerEvidence:
     job_id: str
     profile_id: str
@@ -62,12 +86,13 @@ class WorkerEvidence:
     evaluation_dataset_sha256: str
     scoring_sha256: str
     request_protocol_sha256: str | None = None
+    invocation: InvocationEvidence | None = None
 
     @classmethod
     def parse(cls, value):
         if value is None:
             return None
-        required = cls.__dataclass_fields__.keys() - {"request_protocol_sha256"}
+        required = cls.__dataclass_fields__.keys() - {"request_protocol_sha256", "invocation"}
         require(isinstance(value, dict) and required <= value.keys() <= cls.__dataclass_fields__.keys(),
                 "invalid worker evidence fields")
         require(nonempty(value["profile_id"]) and value["source"] in ("fixture", "worker"),
@@ -77,7 +102,7 @@ class WorkerEvidence:
         protocol = value.get("request_protocol_sha256")
         require(protocol is None or isinstance(protocol, str) and SHA256.fullmatch(protocol),
                 "invalid worker evidence request_protocol_sha256")
-        return cls(**value)
+        return cls(**{**value, "invocation": InvocationEvidence.parse(value.get("invocation"))})
 
 
 @dataclass(frozen=True)
@@ -113,8 +138,13 @@ class Run:
         return cls(*(data[field] for field in fields), dict(precision), checkpoint, evidence)
 
     def differences(self, other):
-        return [key for key in ("source", "model_revision", "environment_id", "request_settings_id")
-                if getattr(self, key) != getattr(other, key)]
+        differences = [key for key in ("source", "model_revision", "environment_id", "request_settings_id")
+                       if getattr(self, key) != getattr(other, key)]
+        first = self.worker_evidence.invocation if self.worker_evidence else None
+        second = other.worker_evidence.invocation if other.worker_evidence else None
+        if first and second and first.binary_sha256 != second.binary_sha256:
+            differences.append("infer_binary_sha256")
+        return differences
 
 
 @dataclass(frozen=True)
@@ -228,4 +258,8 @@ class Comparison:
                 require(evidence.request_protocol_sha256 is None or
                         protocol is not None and protocol.sha256 == evidence.request_protocol_sha256,
                         f"{side}: worker evidence does not match the request protocol")
+                if evidence.invocation:
+                    require(evidence.invocation.audio_checked == len(samples)
+                            and evidence.invocation.audio_manifest_checked == sum(row.audio_sha256 is not None for row in samples),
+                            f"{side}: Infer invocation audio counts differ from the comparison")
         return cls(data["model"], baseline, candidate, samples, *fingerprints, protocol)

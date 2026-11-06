@@ -86,4 +86,6 @@ python3 -m quantdoctor job-result-validate examples/worker-job.json examples/wor
 
 有真实输入或回传文件时，可以生成摘要并校验实际产物。`import-worker-edge` 将本地核对过的 Infer 工单、engine、请求和响应关联到评分报告。见 [离线产物校验](docs/ARTIFACTS.md)。
 
+准备好 Qwen3-ASR Engine 后，用 `infer-plan` 核对目录和目标命令，再在目标设备使用 `infer-run` 记录可执行文件、固定参数、音频摘要和原始响应。见 [ASR Infer 适配器](docs/INFER.md)。
+
 选定候选后，可先用 [目标设备预检](docs/PREFLIGHT.md)检查已知精度限制，再生成并核对各阶段工单。

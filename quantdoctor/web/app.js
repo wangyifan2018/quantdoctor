@@ -1,4 +1,10 @@
 const byId = (id) => document.getElementById(id);
+const create = (tag, value, className) => {
+  const element = document.createElement(tag);
+  if (value != null) element.textContent = value;
+  if (className) element.className = className;
+  return element;
+};
 const labels = {
   missing: "缺少结果", failed: "运行失败", transcribed: "有转写", cleanup_empty: "清理后为空",
   first_step_eos: "首步 EOS", eos_unlocated: "EOS 位置待确认", other_stop: "其他停止条件",
@@ -527,7 +533,7 @@ function showAcceptance(data) {
   byId("candidate-acceptance").hidden = false;
 }
 
-function showWorkerReceipts(data, create) {
+function showWorkerReceipts(data) {
   const runs = [data.baseline, ...data.candidates];
   if (data.baseline.source !== "target" && !runs.some(run => run.worker_evidence)) return;
   for (const run of runs) {
@@ -546,6 +552,17 @@ function showWorkerReceipts(data, create) {
         row.append(create("code", receipt[key]));
         panel.append(row);
       }
+      if (receipt.invocation) {
+        const invocation = receipt.invocation;
+        panel.append(create("p", "已核对固定 CLI 参数 · 进程退出码 " + invocation.exit_code
+          + " · 已记录 " + invocation.audio_checked + " 条音频摘要，其中 "
+          + invocation.audio_manifest_checked + " 条匹配评测清单"));
+        const binary = create("p", "可执行文件摘要 ");
+        binary.append(create("code", invocation.binary_sha256));
+        panel.append(binary);
+      } else {
+        panel.append(create("p", "未关联 CLI 调用记录。", "muted"));
+      }
     } else {
       panel.append(create("p", "可用 import-worker-edge 导入工单和产物。", "muted"));
     }
@@ -554,7 +571,7 @@ function showWorkerReceipts(data, create) {
   byId("worker-evidence").hidden = false;
 }
 
-function showCandidateDiagnosis(data, create) {
+function showCandidateDiagnosis(data) {
   const replay = data.replay;
   const originalId = replay?.original_run.id;
   const repairId = replay?.repair_run.id;
@@ -661,17 +678,11 @@ function showCandidateDiagnosis(data, create) {
 }
 
 function showCandidates(data) {
-  const create = (tag, value, className) => {
-    const element = document.createElement(tag);
-    if (value != null) element.textContent = value;
-    if (className) element.className = className;
-    return element;
-  };
   text("source", sources[data.baseline.source]);
   document.querySelector("h1").textContent = "候选方案对照";
   text("model", data.model + " · 基线 " + data.baseline.id + " · " + data.samples.length + " 条评测记录"
     + (data.input_mismatch_samples ? " · " + data.input_mismatch_samples + " 条音频摘要冲突" : ""));
-  const selectSamples = showCandidateDiagnosis(data, create);
+  const selectSamples = showCandidateDiagnosis(data);
   for (const run of data.candidates) {
     const counts = run.outcomes;
     const precision = Object.entries(run.precision).map(([component, value]) => component + " " + value).join(" · ");
@@ -760,7 +771,7 @@ function showCandidates(data) {
   }
   if (data.performance) showCandidatePerformance(data);
   if (data.acceptance) showAcceptance(data);
-  showWorkerReceipts(data, create);
+  showWorkerReceipts(data);
   if (data.replay) {
     const original = data.replay.original_run;
     byId("candidate-replay").append(byId("replay-overview"));
@@ -856,6 +867,7 @@ function setup(data) {
     return;
   }
   const { baseline, candidate, replay } = data;
+  showWorkerReceipts({baseline, candidates: replay ? [candidate, replay.repair_run] : [candidate]});
   const replayRows = new Map(Object.entries(replay?.samples ?? {}));
   text("source", baseline.source === candidate.source
     ? sources[baseline.source]

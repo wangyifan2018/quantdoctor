@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "id": "jetson-thor-example",
+  "platform": "jetson_thor",
+  "edge_commit": "1231d6415ce38d0b2f20b3308ac24e58ec4100a8"
+}

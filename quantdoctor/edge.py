@@ -8,7 +8,7 @@ from .request_protocol import RequestProtocol
 _NO_REQUEST_FILE = object()
 
 
-def _responses(document):
+def parse_edge_responses(document):
     require(isinstance(document, dict) and isinstance(document.get("responses"), list),
             "Edge output requires a responses array")
     result = {}
@@ -48,7 +48,7 @@ def import_edge(manifest, baseline, candidate, *, baseline_trace=None, candidate
                 baseline_audio=None, candidate_audio=None, request_document=_NO_REQUEST_FILE):
     require(isinstance(manifest, dict) and isinstance(manifest.get("samples"), list),
             "manifest requires a samples array")
-    baseline_by_index, candidate_by_index = _responses(baseline), _responses(candidate)
+    baseline_by_index, candidate_by_index = parse_edge_responses(baseline), parse_edge_responses(candidate)
     rows = []
     indices = set()
     for row in manifest["samples"]:
